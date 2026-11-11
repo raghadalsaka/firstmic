@@ -147,3 +147,9 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# First Mic
+data/
+.DS_Store
+e2e/media/
+e2e/out/

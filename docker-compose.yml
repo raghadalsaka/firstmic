@@ -1,0 +1,36 @@
+services:
+  firstmic:
+    build:
+      context: .
+      args:
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:?Set VITE_GOOGLE_CLIENT_ID in .env}
+    restart: unless-stopped
+    environment:
+      VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID}
+      FIRSTMIC_MAX_SECONDS: ${FIRSTMIC_MAX_SECONDS:-180}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - firstmic-data:/data
+    expose:
+      - "4100"
+
+  caddy:
+    image: caddy:2.8.4
+    restart: unless-stopped
+    depends_on:
+      - firstmic
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      FIRSTMIC_DOMAIN: ${FIRSTMIC_DOMAIN:?Set FIRSTMIC_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  firstmic-data:
+  caddy-data:
+  caddy-config:

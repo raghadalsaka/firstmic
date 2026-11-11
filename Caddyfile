@@ -1,0 +1,4 @@
+{$FIRSTMIC_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy firstmic:4100
+}

@@ -1,0 +1,113 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import { SUGGESTED_MIN_SECONDS } from '../config'
+import { formatClock } from '../utils/format'
+import { useRecorder } from './useRecorder'
+
+const props = defineProps<{
+  classToken: string
+  topicId: string
+  topicTitle: string
+  studentToken: string
+  maxSeconds: number
+}>()
+
+const emit = defineEmits<{ changeTopic: []; signedOut: [] }>()
+
+const { phase, elapsedMs, maxMs, sendPercent, hasSent, audioUrl, record, stop, tryAgain, send } = useRecorder({
+  classToken: props.classToken,
+  topicId: props.topicId,
+  studentToken: props.studentToken,
+  maxSeconds: props.maxSeconds,
+  onSignedOut: () => emit('signedOut'),
+})
+
+const isBusy = computed(() => ['starting', 'recording', 'sending'].includes(phase.value))
+const showTimer = computed(() => ['recording', 'recorded', 'sending', 'send-failed'].includes(phase.value))
+const isShort = computed(() => elapsedMs.value < SUGGESTED_MIN_SECONDS * 1000)
+const showPlayer = computed(() => audioUrl.value !== null && ['recorded', 'send-failed', 'sent'].includes(phase.value))
+const hitLimit = computed(() => elapsedMs.value >= maxMs - 250)
+</script>
+
+<template>
+  <section class="flex flex-col items-center gap-6 text-center">
+    <div>
+      <p class="text-ink-soft">Your topic</p>
+      <h1 class="font-display text-3xl font-extrabold">{{ topicTitle }}</h1>
+    </div>
+
+    <p
+      v-if="showTimer"
+      class="font-display text-6xl font-extrabold tabular-nums"
+      :class="phase === 'recording' ? 'text-rec' : 'text-ink'"
+      role="timer"
+      aria-live="off"
+    >
+      {{ formatClock(elapsedMs) }}<span class="text-3xl text-ink-soft"> / {{ formatClock(maxMs) }}</span>
+    </p>
+
+    <p v-if="phase === 'loading'" class="text-lg text-ink-soft">Getting ready…</p>
+
+    <template v-else-if="phase === 'ready' || phase === 'starting' || phase === 'mic-blocked'">
+      <button
+        class="btn btn-rec btn-mic"
+        :disabled="phase === 'starting'"
+        @click="record"
+      >
+        Record
+      </button>
+      <p v-if="phase === 'mic-blocked'" class="alert-bad max-w-sm" role="alert">
+        Your microphone is turned off for this page. Allow the microphone in your browser, then tap Record again.
+      </p>
+      <p v-else-if="hasSent" class="max-w-sm text-ink-soft">
+        Your sent recording stays with your teacher until you send a new one.
+      </p>
+      <p v-else class="max-w-sm text-ink-soft">You can talk for up to {{ formatClock(maxMs) }}.</p>
+    </template>
+
+    <template v-else-if="phase === 'recording'">
+      <p class="flex items-center gap-2 font-bold text-rec">
+        <span class="size-3 animate-rec-pulse rounded-full bg-rec" aria-hidden="true"></span>
+        Recording
+      </p>
+      <button class="btn btn-primary btn-mic" @click="stop">Stop</button>
+    </template>
+
+    <audio v-if="showPlayer" :src="audioUrl ?? undefined" controls preload="metadata" class="w-full max-w-sm"></audio>
+
+    <template v-if="phase === 'recorded' || phase === 'send-failed'">
+      <p v-if="phase === 'send-failed'" class="alert-bad max-w-sm" role="alert">
+        Couldn't send. Your recording is safe on this device.
+      </p>
+      <p v-else-if="hitLimit" class="text-ink-soft">Time's up! Your recording stopped at {{ formatClock(maxMs) }}.</p>
+      <p v-else-if="isShort" class="text-ink-soft">Tip: try to talk for at least 2 minutes.</p>
+      <div class="flex w-full max-w-sm flex-col gap-4">
+        <button class="btn btn-good btn-large" @click="send">Send</button>
+        <button class="btn" @click="tryAgain">Try Again</button>
+      </div>
+    </template>
+
+    <template v-else-if="phase === 'sending'">
+      <p class="text-xl font-bold" aria-live="polite">Sending… {{ sendPercent }}%</p>
+      <p class="text-ink-soft">Keep this page open.</p>
+    </template>
+
+    <template v-else-if="phase === 'sent'">
+      <p class="animate-stamp font-display text-4xl font-extrabold text-good" role="status">Sent!</p>
+      <p class="text-ink-soft">Your teacher has your recording.</p>
+      <button class="btn" @click="tryAgain">Try Again</button>
+    </template>
+
+    <p v-else-if="phase === 'unsupported'" class="alert-bad max-w-sm" role="alert">
+      This browser can't record. Try the latest Chrome or Safari.
+    </p>
+
+    <button
+      v-if="!isBusy && phase !== 'loading'"
+      class="-my-2 py-2 text-base font-semibold text-ink-soft underline underline-offset-4"
+      @click="emit('changeTopic')"
+    >
+      Change topic
+    </button>
+  </section>
+</template>

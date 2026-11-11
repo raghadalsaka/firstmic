@@ -1,0 +1,246 @@
+// Full solo browser E2E. Usage: node solo-e2e.mjs <baseUrl> <fakeGooglePort> <toneWav> <outDir>
+// Expects the server to run with FIRSTMIC_MAX_SECONDS=10 and the fake Google endpoints (see fake-google.mjs).
+import fs from 'node:fs'
+import path from 'node:path'
+import assert from 'node:assert/strict'
+import { chromium, devices } from 'playwright'
+import { gisStub, startFakeGoogle } from './fake-google.mjs'
+
+const [base = 'http://localhost:18101', googlePort = '18199', toneWav = './media/tone440.wav', outDir = './out'] =
+  process.argv.slice(2)
+const fakeGoogle = await startFakeGoogle(Number(googlePort))
+fs.mkdirSync(outDir, { recursive: true })
+let n = 0
+const ok = (msg) => console.log(`ok ${++n} - ${msg}`)
+const shot = (page, name) => page.screenshot({ path: path.join(outDir, `${name}.png`), fullPage: true })
+
+const browser = await chromium.launch({
+  args: [
+    '--use-fake-ui-for-media-stream',
+    '--use-fake-device-for-media-stream',
+    `--use-file-for-fake-audio-capture=${path.resolve(toneWav)}`,
+    '--autoplay-policy=no-user-gesture-required',
+  ],
+})
+
+// ---- Teacher signs in with Google from the home page and sets up a class ----
+const teacherCtx = await browser.newContext()
+await teacherCtx.route('https://accounts.google.com/gsi/client', (route) =>
+  route.fulfill({ contentType: 'text/javascript', body: gisStub(`raghad${Date.now()}@example.com`) }),
+)
+const teacher = await teacherCtx.newPage()
+await teacher.goto(`${base}/teacher/classes/not-a-class`)
+await teacher.getByRole('heading', { name: 'Teacher sign in' }).waitFor()
+await shot(teacher, 'login-screen')
+await teacher.goto(`${base}/teacher`)
+await teacher.waitForURL(`${base}/`)
+await teacher.getByRole('heading', { name: 'Pick your class' }).waitFor()
+await shot(teacher, 'home-signed-out')
+await teacher.getByRole('button', { name: 'Sign In' }).click()
+await teacher.getByRole('heading', { name: 'Your classes' }).waitFor()
+await teacher.getByRole('button', { name: 'Sign Out' }).waitFor()
+assert.equal(teacher.url(), `${base}/`)
+await teacher.getByLabel('New class').fill('Grade 6B')
+await teacher.getByRole('button', { name: 'Create Class' }).click()
+await teacher.waitForURL('**/teacher/classes/*')
+for (const title of ['My favourite animal', 'A day at school']) {
+  await teacher.getByLabel('New topic').fill(title)
+  await teacher.getByRole('button', { name: 'Add Topic' }).click()
+  await teacher.locator('li span', { hasText: title }).first().waitFor()
+}
+// Two students: Ali with a PIN the teacher types, Sara with one First Mic makes
+const ALI_PIN = '123456'
+await teacher.getByRole('button', { name: 'Add Student' }).click()
+await teacher.getByLabel('Name').fill('Ali')
+await teacher.getByLabel('PIN').fill(ALI_PIN)
+await teacher.getByRole('button', { name: 'Add Student' }).last().click()
+await teacher.getByTestId('student-row').filter({ hasText: 'Ali' }).waitFor()
+await teacher.getByRole('button', { name: 'Add Student' }).click()
+await teacher.getByLabel('Name').fill('Sara')
+await teacher.getByRole('button', { name: 'Add Student' }).last().click()
+const saraRow = teacher.getByTestId('student-row').filter({ hasText: 'Sara' })
+await saraRow.waitFor()
+const saraPin = (await saraRow.innerText()).match(/\d{6}/)?.[0]
+assert.ok(saraPin, 'Sara got a 6-digit PIN')
+assert.match(await teacher.getByTestId('student-row').filter({ hasText: 'Ali' }).innerText(), new RegExp(ALI_PIN))
+const classLink = await teacher.getByLabel('Class link').inputValue()
+assert.match(classLink, /\/c\/[a-z0-9]{32}\/grade-6b$/)
+const bareLink = classLink.replace(/\/grade-6b$/, '')
+await shot(teacher, 'teacher-class-roster')
+const canonicalCheck = await teacherCtx.newPage()
+await canonicalCheck.goto(bareLink)
+await canonicalCheck.getByRole('heading', { name: 'Who are you?' }).waitFor()
+assert.equal(canonicalCheck.url(), classLink)
+await canonicalCheck.close()
+ok('teacher signs in with Google, creates a class, two topics and two students (typed and generated PIN)')
+
+// ---- Student: home page, class, name, topic, record, listen, try again, record, send ----
+const studentCtx = await browser.newContext({ ...devices['Pixel 7'], permissions: ['microphone'] })
+const student = await studentCtx.newPage()
+student.on('console', (m) => m.type() === 'error' && console.log('  [student console]', m.text()))
+await student.goto(base)
+await shot(student, 'student-0-home')
+await student.locator(`a[href="${new URL(classLink).pathname}"]`).click()
+await student.getByRole('heading', { name: 'Who are you?' }).waitFor()
+assert.equal(student.url(), classLink)
+await shot(student, 'student-1-names')
+await student.getByRole('button', { name: 'Ali' }).click()
+await student.getByLabel('Type your PIN').fill('999999')
+await student.getByRole('button', { name: 'Next' }).click()
+await student.getByText("That PIN isn't right. Try again.").waitFor()
+await shot(student, 'student-1b-wrong-pin')
+await student.getByLabel('Type your PIN').fill(ALI_PIN)
+await student.getByRole('button', { name: 'Next' }).click()
+await student.getByText('Hi Ali! Pick a topic').waitFor()
+await shot(student, 'student-2-topics')
+await student.getByRole('button', { name: 'My favourite animal' }).click()
+await student.getByRole('button', { name: 'Record' }).waitFor()
+await shot(student, 'student-3-ready')
+ok('student picks the class, then their name; a wrong PIN is refused and the right one gets in')
+
+async function recordFor(ms) {
+  await student.getByRole('button', { name: 'Record' }).click()
+  await student.getByRole('button', { name: 'Stop' }).waitFor()
+  await student.waitForTimeout(ms)
+}
+
+await recordFor(3000)
+await shot(student, 'student-4-recording')
+const timerText = await student.getByRole('timer').innerText()
+assert.match(timerText, /^0:0[2-4]/)
+await student.getByRole('button', { name: 'Stop' }).click()
+await student.getByRole('button', { name: 'Send' }).waitFor()
+await shot(student, 'student-5-recorded')
+const played = await student.evaluate(async () => {
+  const audio = document.querySelector('audio')
+  await audio.play()
+  await new Promise((r) => setTimeout(r, 800))
+  const t = audio.currentTime
+  audio.pause()
+  return t
+})
+assert.ok(played > 0.3, `listen-back did not play (currentTime ${played})`)
+ok(`record 3s, stop, listen back (played to ${played.toFixed(2)}s)`)
+
+await student.getByRole('button', { name: 'Try Again' }).click()
+await student.getByRole('button', { name: 'Record' }).waitFor()
+assert.equal(await student.locator('audio').count(), 0)
+ok('Try Again discards the take and returns to Record')
+
+// The take survives a reload before Send
+await recordFor(4000)
+await student.getByRole('button', { name: 'Stop' }).click()
+await student.getByRole('button', { name: 'Send' }).waitFor()
+await student.reload()
+await student.getByRole('button', { name: 'My favourite animal' }).click()
+await student.getByRole('button', { name: 'Send' }).waitFor()
+ok('a stopped take is still there after a page reload')
+
+// Send fails once (server refuses), take stays, second Send works
+await student.route('**/api/student/submissions', (route) =>
+  route.request().method() === 'POST' ? route.fulfill({ status: 503, body: '{}' }) : route.continue(),
+)
+await student.getByRole('button', { name: 'Send' }).click()
+await student.getByText("Couldn't send. Your recording is safe on this device.").waitFor()
+await shot(student, 'student-6-send-failed')
+await student.unroute('**/api/student/submissions')
+await student.getByRole('button', { name: 'Send' }).click()
+await student.getByText('Sent!').waitFor({ timeout: 60_000 })
+await shot(student, 'student-7-sent')
+ok('a failed Send keeps the recording; sending again succeeds')
+
+// ---- Teacher sees, plays and downloads v1 ----
+await teacher.reload()
+const rows = teacher.getByTestId('submission')
+await rows.first().waitFor()
+assert.equal(await rows.count(), 1)
+const rowText = await rows.first().innerText()
+assert.match(rowText, /Ali/)
+assert.match(rowText, /My favourite animal/)
+assert.doesNotMatch(rowText, /sent \d+ times/)
+const v1Src = await rows.first().locator('audio').getAttribute('src')
+const teacherPlayed = await teacher.evaluate(async () => {
+  const audio = document.querySelector('[data-testid="submission"] audio')
+  await audio.play()
+  await new Promise((r) => setTimeout(r, 1000))
+  const t = audio.currentTime
+  audio.pause()
+  return { t, duration: audio.duration }
+})
+assert.ok(teacherPlayed.t > 0.5, 'teacher playback did not advance')
+const v1 = await teacherCtx.request.get(`${base}${v1Src}?download=1`)
+assert.equal(v1.status(), 200)
+assert.match(v1.headers()['content-disposition'], /Grade-6B-My-favourite-animal-Ali-v1\.mp3/)
+fs.writeFileSync(path.join(outDir, 'v1.mp3'), await v1.body())
+await shot(teacher, 'teacher-class-v1')
+ok(`teacher sees v1, plays it (${teacherPlayed.t.toFixed(2)}s of ${teacherPlayed.duration.toFixed(2)}s) and downloads it`)
+
+// ---- Student replaces it with a take that hits the 10s auto-stop ----
+await student.getByRole('button', { name: 'Try Again' }).click()
+await student.getByText('Your sent recording stays with your teacher until you send a new one.').waitFor()
+await student.getByRole('button', { name: 'Record' }).click()
+await student.getByText("Time's up!").waitFor({ timeout: 20_000 })
+await shot(student, 'student-8-times-up')
+const capped = await student.getByRole('timer').innerText()
+assert.match(capped, /^0:(09|10)/)
+ok(`recording auto-stops at the 10s limit (timer ${capped.replace(/\s+/g, ' ')})`)
+
+await teacher.reload()
+await rows.first().waitFor()
+assert.equal(await rows.first().locator('audio').getAttribute('src'), v1Src)
+assert.equal((await teacherCtx.request.get(`${base}${v1Src}`)).status(), 200)
+ok('before the replacement is sent, the teacher still has v1')
+
+await student.getByRole('button', { name: 'Send' }).click()
+await student.getByText('Sent!').waitFor({ timeout: 60_000 })
+await teacher.reload()
+await rows.first().waitFor()
+assert.equal(await rows.count(), 1)
+const v2Src = await rows.first().locator('audio').getAttribute('src')
+assert.notEqual(v2Src, v1Src)
+assert.match(await rows.first().innerText(), /sent 2 times/)
+assert.equal((await teacherCtx.request.get(`${base}${v1Src}`)).status(), 404)
+const v2 = await teacherCtx.request.get(`${base}${v2Src}?download=1`)
+assert.match(v2.headers()['content-disposition'], /-v2\.mp3/)
+fs.writeFileSync(path.join(outDir, 'v2.mp3'), await v2.body())
+await shot(teacher, 'teacher-class-v2')
+ok('replacement becomes v2; v1 is gone')
+
+// ---- Layout: no horizontal scroll on phones ----
+for (const [label, device] of [['iphone13', devices['iPhone 13']], ['pixel7', devices['Pixel 7']]]) {
+  const { defaultBrowserType: _ignored, ...chromiumDevice } = device
+  const ctx = await browser.newContext({ ...chromiumDevice, permissions: ['microphone'] })
+  const page = await ctx.newPage()
+  await page.goto(classLink)
+  await page.getByRole('button', { name: 'Sara' }).click()
+  await page.getByLabel('Type your PIN').fill(saraPin)
+  await shot(page, `${label}-pin`)
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByRole('button', { name: 'A day at school' }).click()
+  await page.getByRole('button', { name: 'Record' }).waitFor()
+  for (const step of ['ready', 'recording', 'recorded']) {
+    if (step === 'recording') {
+      await page.getByRole('button', { name: 'Record' }).click()
+      await page.getByRole('button', { name: 'Stop' }).waitFor()
+    }
+    if (step === 'recorded') {
+      await page.getByRole('button', { name: 'Stop' }).click()
+      await page.getByRole('button', { name: 'Send' }).waitFor()
+    }
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+    assert.ok(overflow <= 0, `${label} ${step}: horizontal overflow ${overflow}px`)
+    const small = await page.evaluate(() =>
+      [...document.querySelectorAll('button')]
+        .filter((b) => b.offsetParent && b.getBoundingClientRect().height < 40)
+        .map((b) => b.textContent.trim()),
+    )
+    await shot(page, `${label}-${step}`)
+    if (small.length) console.log(`  note: ${label} ${step} buttons under 40px: ${small.join(', ')}`)
+  }
+  await ctx.close()
+  ok(`${label} viewport: ready/recording/recorded fit without horizontal scroll`)
+}
+
+await browser.close()
+fakeGoogle.close()
+console.log(`\nall ${n} steps passed`)

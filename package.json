@@ -1,0 +1,27 @@
+{
+  "name": "firstmic",
+  "private": true,
+  "version": "0.1.0",
+  "description": "First Mic: a private Grade 6 podcast app.",
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,green \"pnpm --filter @firstmic/server dev\" \"pnpm --filter @firstmic/web dev\"",
+    "build": "pnpm --filter @firstmic/server build && pnpm --filter @firstmic/web build",
+    "start": "node server/dist/index.js",
+    "typecheck": "pnpm --filter @firstmic/server typecheck && pnpm --filter @firstmic/web type-check",
+    "check": "pnpm --filter @firstmic/server typecheck && pnpm --filter @firstmic/web check"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "pnpm@10.12.1",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild"
+    ]
+  },
+  "license": "MIT"
+}
