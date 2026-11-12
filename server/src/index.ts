@@ -13,12 +13,24 @@ import { registerClassRoutes } from "./routes/classes.js";
 import { registerRosterRoutes } from "./routes/roster.js";
 import { resumeInterruptedTracks } from "./jobs/pipeline.js";
 import { startSubmissionJobs } from "./jobs/submissions.js";
+import { registerGroupRoutes } from "./routes/group.js";
+import { startGroupJobs } from "./jobs/group-takes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 4100);
 
 const app = Fastify({
-  logger: { level: process.env.LOG_LEVEL ?? "info" },
+  logger: {
+    level: process.env.LOG_LEVEL ?? "info",
+    serializers: {
+      // The live-call socket carries the group token in its URL; keep it out of the logs.
+      req: (req: { method: string; url: string; ip: string }) => ({
+        method: req.method,
+        url: req.url.replace(/([?&]token=)[^&]+/, "$1[redacted]"),
+        remoteAddress: req.ip,
+      }),
+    },
+  },
   bodyLimit: 64 * 1024 * 1024, // MediaRecorder chunks can be several MB
 });
 
@@ -38,7 +50,9 @@ registerTrackRoutes(app);
 registerStudentRoutes(app);
 registerClassRoutes(app);
 registerRosterRoutes(app);
+await registerGroupRoutes(app);
 startSubmissionJobs();
+startGroupJobs();
 resumeInterruptedTracks();
 
 app.get("/api/health", async () => ({ ok: true, name: "firstmic", now: Date.now() }));

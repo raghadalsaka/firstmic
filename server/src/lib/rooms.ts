@@ -50,6 +50,8 @@ type Client = {
   upload: UploadHealth | null;
   /** In the waiting room: invisible to the call until a host admits them. */
   waiting: boolean;
+  /** Message types this client may send; null allows all of them. */
+  allowedMessages: ReadonlySet<string> | null;
 };
 
 const rooms = new Map<string, Map<string, Client>>();
@@ -80,7 +82,11 @@ export function activeRecording(sessionId: string): RecordingRow | null {
   return row ?? null;
 }
 
-export function addClient(participant: ParticipantRow, socket: WebSocket): Client {
+export function addClient(
+  participant: ParticipantRow,
+  socket: WebSocket,
+  allowedMessages: ReadonlySet<string> | null = null
+): Client {
   const r = room(participant.session_id);
   // Replace any stale connection from the same participant (refresh, reconnect).
   const stale = r.get(participant.id);
@@ -110,6 +116,7 @@ export function addClient(participant: ParticipantRow, socket: WebSocket): Clien
     state: { mic: true, cam: true, sharing: false },
     upload: null,
     waiting: needsAdmission,
+    allowedMessages,
   };
   r.set(participant.id, client);
   cancelEmptyRoomStop(participant.session_id);
@@ -176,6 +183,24 @@ export function roomSize(sessionId: string): number {
   return rooms.get(sessionId)?.size ?? 0;
 }
 
+/** Participants with an open connection to the session's room. */
+export function connectedParticipantIds(sessionId: string): Set<string> {
+  return new Set(rooms.get(sessionId)?.keys() ?? []);
+}
+
+/** Closes the connections of one participant, or of everyone in the session, e.g. after their token stopped working. */
+export function disconnect(sessionId: string, participantId?: string): void {
+  for (const client of [...(rooms.get(sessionId)?.values() ?? [])]) {
+    if (participantId === undefined || client.participantId === participantId) {
+      try {
+        client.socket.close(4401, "signed out");
+      } catch {
+        /* already closed */
+      }
+    }
+  }
+}
+
 /** How many hosts/guests are currently in the call (waiting-room guests excluded). */
 export function roomComposition(sessionId: string): { hosts: number; guests: number } {
   const r = rooms.get(sessionId);
@@ -227,6 +252,7 @@ export function handleClientMessage(client: Client, raw: string): void {
 
   // Waiting-room guests can only keep the clock sync alive.
   if (client.waiting && msg.t !== "ping") return;
+  if (client.allowedMessages && !client.allowedMessages.has(msg.t)) return;
 
   switch (msg.t) {
     case "signal":

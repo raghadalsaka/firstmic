@@ -10,7 +10,7 @@ import {
   type SubmissionRow,
   type TopicRow,
 } from "../lib/db.js";
-import { bearerToken, requireParticipant } from "../lib/auth.js";
+import { bearerToken, requireParticipantSession } from "../lib/auth.js";
 import { newId, newToken } from "../lib/ids.js";
 import {
   MAX_EPISODE_SECONDS,
@@ -37,7 +37,7 @@ function publicStudent(student: StudentRow): PublicStudent {
 }
 
 /** The student signed in on this device with their PIN (Authorization: Bearer <login token>), within this class. */
-function requireSignedInStudent(req: FastifyRequest, reply: FastifyReply, studio: StudioRow): StudentRow | null {
+export function requireSignedInStudent(req: FastifyRequest, reply: FastifyReply, studio: StudioRow): StudentRow | null {
   const student = db
     .prepare(
       `SELECT s.* FROM student_logins l
@@ -83,7 +83,7 @@ const submissionSchema = z.object({
 });
 
 /** The class named by the :classToken link; replies 404 for an unknown or replaced link. */
-function requireClass(req: FastifyRequest, reply: FastifyReply): StudioRow | null {
+export function requireClass(req: FastifyRequest, reply: FastifyReply): StudioRow | null {
   const { classToken } = req.params as { classToken: string };
   const studio = db.prepare("SELECT * FROM studios WHERE class_token = ?").get(classToken) as StudioRow | undefined;
   if (!studio) {
@@ -96,18 +96,7 @@ function requireClass(req: FastifyRequest, reply: FastifyReply): StudioRow | nul
 type EpisodeStudent = { participant: ParticipantRow; session: SessionRow };
 
 function requireEpisodeStudent(req: FastifyRequest, reply: FastifyReply): EpisodeStudent | null {
-  const participant = requireParticipant(req, reply);
-  if (!participant) {
-    return null;
-  }
-  const session = db
-    .prepare("SELECT * FROM sessions WHERE id = ? AND kind = 'solo'")
-    .get(participant.session_id) as SessionRow | undefined;
-  if (!session) {
-    reply.code(401).send({ error: "Invalid participant token" });
-    return null;
-  }
-  return { participant, session };
+  return requireParticipantSession(req, reply, "solo");
 }
 
 /**
@@ -171,8 +160,8 @@ const getOrCreateEpisode = db.transaction(
        VALUES (?, ?, ?, 'ended', ?, ?, ?, 'solo', ?, ?)`
     ).run(episodeId, studioId, `${student.name} - ${topic.title}`, newToken(), now, now, topic.id, student.id);
     db.prepare(
-      "INSERT INTO participants (id, session_id, name, role, token, created_at) VALUES (?, ?, ?, 'guest', ?, ?)"
-    ).run(newId(), episodeId, student.name, token, now);
+      "INSERT INTO participants (id, session_id, student_id, name, role, token, created_at) VALUES (?, ?, ?, ?, 'guest', ?, ?)"
+    ).run(newId(), episodeId, student.id, student.name, token, now);
     return { episodeId, token, created: true };
   }
 );

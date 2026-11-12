@@ -10,6 +10,7 @@ export default defineConfig({
     port: 4110,
     proxy: {
       '/api': API_TARGET,
+      '/ws': { target: API_TARGET, ws: true },
     },
   },
   test: {

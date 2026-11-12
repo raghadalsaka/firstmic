@@ -13,6 +13,7 @@ import {
   studentNameSchema,
 } from "../lib/roster.js";
 import { deleteEpisodes } from "../jobs/submissions.js";
+import { disconnect } from "../lib/rooms.js";
 
 const newStudentSchema = z.object({
   name: studentNameSchema,
@@ -60,27 +61,28 @@ function takenPins(studioId: string): Set<string> {
 }
 
 /**
- * A new or changed PIN signs the student out on every device: their PIN sign-ins go, and each episode's
- * upload token is replaced, so a device can't keep sending recordings. Episodes and sent recordings stay.
+ * A new or changed PIN signs the student out on every device: their PIN sign-ins go, and the token of each solo
+ * episode and group they're in is replaced, so a device can't keep sending recordings or stay in a live call.
+ * Episodes, groups and sent recordings stay.
  */
 function setPin(student: StudentRow, pin: string): void {
-  db.transaction(() => {
+  const participants = db.transaction(() => {
     db.prepare(
       "UPDATE students SET pin = ?, failed_pin_attempts = 0, locked_until = NULL, updated_at = ? WHERE id = ?"
     ).run(pin, Date.now(), student.id);
     db.prepare("DELETE FROM student_logins WHERE student_id = ?").run(student.id);
-    const participants = db
-      .prepare(
-        `SELECT p.id FROM participants p
-         INNER JOIN sessions s ON s.id = p.session_id
-         WHERE s.student_id = ?`
-      )
-      .all(student.id) as { id: string }[];
+    const rows = db
+      .prepare("SELECT id, session_id FROM participants WHERE student_id = ?")
+      .all(student.id) as { id: string; session_id: string }[];
     const replaceToken = db.prepare("UPDATE participants SET token = ? WHERE id = ?");
-    for (const participant of participants) {
+    for (const participant of rows) {
       replaceToken.run(newToken(), participant.id);
     }
+    return rows;
   })();
+  for (const participant of participants) {
+    disconnect(participant.session_id, participant.id);
+  }
 }
 
 export function registerRosterRoutes(app: FastifyInstance): void {

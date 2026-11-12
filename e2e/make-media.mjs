@@ -7,12 +7,15 @@ fs.mkdirSync(new URL('./media', import.meta.url), { recursive: true })
 const script = [
   'ffmpeg -loglevel error -y -f lavfi -i sine=frequency=440:duration=4 -c:a libopus /tmp/tone.webm',
   'ffmpeg -loglevel error -y -f lavfi -i sine=frequency=440:duration=60 -ar 48000 -ac 1 /tmp/tone440.wav',
+  // The second voice of a group take: a different pitch, so the mix can be checked for both.
+  'ffmpeg -loglevel error -y -f lavfi -i sine=frequency=660:duration=4 -c:a libopus /tmp/tone660.webm',
+  'ffmpeg -loglevel error -y -f lavfi -i sine=frequency=660:duration=60 -ar 48000 -ac 1 /tmp/tone660.wav',
 ].join(' && ')
 execFileSync('docker', ['exec', container, 'sh', '-c', script], { stdio: 'inherit' })
-for (const file of ['tone.webm', 'tone440.wav']) {
+for (const file of ['tone.webm', 'tone440.wav', 'tone660.webm', 'tone660.wav']) {
   execFileSync('docker', ['cp', `${container}:/tmp/${file}`, `media/${file}`], {
     stdio: 'inherit',
     cwd: new URL('.', import.meta.url),
   })
 }
-console.log('media/tone.webm and media/tone440.wav are ready')
+console.log('media/tone.webm, tone440.wav, tone660.webm and tone660.wav are ready')

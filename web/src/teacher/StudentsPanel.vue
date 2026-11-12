@@ -53,7 +53,7 @@ function newPin(): void {
 
 function remove(): void {
   const student = editingStudent.value
-  if (!student || !window.confirm(`Remove ${student.name}? Their recordings are deleted too. This can't be undone.`)) {
+  if (!student || !window.confirm(`Remove ${student.name}? Their recordings are deleted too, including podcasts they recorded with a partner. This can't be undone.`)) {
     return
   }
   void run(() => api(`/api/teacher/students/${student.id}`, { method: 'DELETE' }))

@@ -9,8 +9,12 @@ replacement at any time. The previous recording stays with the teacher until the
 **Teacher:** sign in with Google (top right of the home page) to a private dashboard to create a class, manage its topics, copy the class link, and play or download
 every student's latest recording as an MP3.
 
-Phase one (this version) is **solo episodes only**. Group rooms, group invites, live calls and audio mixing are
-phase two.
+**Two-person podcasts:** after picking a topic, a student chooses **With a Partner** and gets a 6-digit group PIN
+to share (there is no invite link). A classmate taps **Join a Partner** and types it; once two students are in, the
+group is full. They talk live and use the same Record → Stop → Listen → Send flow with Try Again and the 3-minute
+limit. Whoever taps Record controls that take (Stop, Send, Try Again); if they drop off, their partner takes over.
+Each phone records only its own microphone, the server lines the two voices up and mixes them, and both students
+listen to the mix. Send gives the teacher the mix and each voice as three MP3s.
 
 ## How it works
 
@@ -20,6 +24,11 @@ phase two.
 - **Recording:** the browser records with `MediaRecorder` in 3-second chunks. Each chunk is saved to IndexedDB on the
   device, so a reload doesn't lose a take. On **Send**, a resumable chunk upload sends the take, and the
   server assembles it with ffmpeg into one private MP3 (mono, 128 kbps, capped at the time limit).
+- **Two-person podcasts:** the live call is a WebRTC peer-to-peer connection, using Tributary's signalling, "perfect
+  negotiation" and clock sync (`web/src/group/`, `server/src/routes/group.ts`). Each voice uploads after Stop through
+  the same resumable chunk upload, and `server/src/jobs/group-takes.ts` mixes them with ffmpeg once both arrive. If a
+  voice hasn't arrived within `FIRSTMIC_GROUP_UPLOAD_MINUTES` (5), the take fails and the group records again. The
+  call uses public STUN servers; some school or mobile networks need a TURN relay, set with `ICE_SERVERS`.
 - **Privacy:** no student emails or passwords: the teacher adds each student (name, emoji, optional photo) with a 6-digit PIN. Recordings are served only to signed-in
   teachers of that class. The home page lists every class and each class page lists its students (names, emoji,
   photos), but recording needs the student's PIN, and only the class's teachers can hear recordings.
@@ -32,7 +41,7 @@ Requires Node 22.12+, pnpm 10 (`npx pnpm@10.12.1 …` works without installing i
 
 ```bash
 pnpm install
-VITE_GOOGLE_CLIENT_ID=<QuestRush client id> pnpm dev   # API on :4100, web on :4110 (proxies /api)
+VITE_GOOGLE_CLIENT_ID=<QuestRush client id> pnpm dev   # API on :4100, web on :4110 (proxies /api and /ws)
 pnpm check                              # server typecheck + web type-check, lint, unit tests
 pnpm build && pnpm start                # production-style single process on :4100
 ```
@@ -41,7 +50,7 @@ On Windows, set `VITE_GOOGLE_CLIENT_ID` with `$env:VITE_GOOGLE_CLIENT_ID="<Quest
 (see [docs/TESTING.md](docs/TESTING.md)).
 
 - Deploying to DigitalOcean: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
-- Testing a full solo flow (automated and by hand): [docs/TESTING.md](docs/TESTING.md)
+- Testing the solo and two-person flows (automated and by hand): [docs/TESTING.md](docs/TESTING.md)
 
 ## License
 

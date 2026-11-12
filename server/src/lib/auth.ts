@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { db, type ParticipantRow, type UserRow } from "./db.js";
+import { db, type ParticipantRow, type SessionRow, type UserRow } from "./db.js";
 import { newToken } from "./ids.js";
 
 const SESSION_COOKIE = "firstmic_session";
@@ -90,3 +90,23 @@ export function requireParticipant(
   return participant;
 }
 
+
+/** A participant whose session is a solo episode or a group, by their bearer token; replies 401 otherwise. */
+export function requireParticipantSession(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  kind: "solo" | "group"
+): { participant: ParticipantRow; session: SessionRow } | null {
+  const participant = requireParticipant(req, reply);
+  if (!participant) {
+    return null;
+  }
+  const session = db
+    .prepare("SELECT * FROM sessions WHERE id = ? AND kind = ?")
+    .get(participant.session_id, kind) as SessionRow | undefined;
+  if (!session) {
+    reply.code(401).send({ error: "Invalid participant token" });
+    return null;
+  }
+  return { participant, session };
+}

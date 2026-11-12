@@ -1,4 +1,4 @@
-# Testing First Mic (phase one: solo)
+# Testing First Mic
 
 ## Automated checks
 
@@ -33,6 +33,8 @@ node make-media.mjs     # makes test tones with the container's ffmpeg
 node api-smoke.mjs      # 18 API steps
 node solo-e2e.mjs       # 12 browser steps, screenshots in e2e/out/
 node webkit-layout.mjs  # Safari-engine layout of the home page and student screens
+node group-smoke.mjs    # 14 API steps for two-person podcasts, with two live-call connections
+node group-e2e.mjs      # 9 browser steps: two browsers, each with its own fake microphone
 
 docker rm -f firstmic-e2e
 ```
@@ -45,6 +47,8 @@ The tests never talk to Google:
 - The browser test replaces Google's sign-in script with a stub that "picks" a test account.
 
 Use a fresh container for each run of `api-smoke.mjs`, because it signs in with a fixed email.
+`group-smoke.mjs` and `group-e2e.mjs` check audio inside the container with `docker exec`, so pass the container
+name as the third argument if it isn't `firstmic-e2e`.
 
 **`api-smoke.mjs`** checks:
 
@@ -78,6 +82,37 @@ To check that the sent audio holds the tone:
 docker cp e2e/out/v2.mp3 firstmic-e2e:/tmp/v2.mp3
 docker exec firstmic-e2e ffmpeg -nostats -i /tmp/v2.mp3 -af "bandpass=f=440:width_type=q:w=20,volumedetect" -f null - 2>&1 | grep mean_volume
 ```
+
+**`group-smoke.mjs`** checks:
+
+- creating a group gives a 6-digit PIN; creating again returns the same group
+- a partner joins with the PIN; a third student is refused because the group is full; a wrong PIN, or a PIN from
+  another class, fails
+- joining a friend's group drops your own group for that topic if nobody joined it
+- group tokens can't reach solo or teacher routes, and a solo token can't join a live call
+- Record needs both students in the call; only the student who tapped Record can Stop, Send or Try Again, unless they
+  leave the call
+- the mix has both voices (440 Hz and 660 Hz test tones), and each voice file has only its own tone
+- a take whose voice can't be processed fails, and the sent version stays playable; a new Send replaces it
+- the server stops a take at the time limit
+- a new PIN closes the student's live call; removing a student deletes their group and its files
+
+**`group-e2e.mjs`** drives two Chromium browsers. Ali's fake microphone plays a 440 Hz tone and Sara's a 660 Hz tone.
+
+1. Ali picks a topic, chooses **With a Partner** and sees a group PIN.
+2. Sara joins with the PIN; a wrong PIN is refused. They hear each other live: each page measures the partner's tone
+   from the call.
+3. Omar types the PIN and is told the group is full.
+4. Ali taps Record and controls the take; Sara sees "Ali is in charge". After Stop, both play the mix; only Ali has
+   Send.
+5. Sara reloads and comes back to the same take.
+6. Try Again clears it on both phones.
+7. Sara records and sends; both phones show **Sent!**
+8. The teacher plays the mix and downloads the mix and both voices; the tones are checked with ffmpeg.
+9. A take stops at the 10-second limit, and sending it makes version 2.
+
+Chrome's noise suppression treats a steady test tone as noise and can turn it down by about 20 dB. That's why the
+test only checks that each tone is well above silence.
 
 ## Manual solo test on real devices
 
@@ -124,10 +159,40 @@ Android Chrome and real networks. Use the deployed HTTPS site. The microphone do
 - **Teacher clicks New Link.** Expected: the old class link shows "This link doesn't work".
 - **Teacher clicks Delete** on a recording. Expected: it disappears. The student's next Send starts a fresh episode.
 
+## Manual two-person test on real devices
+
+Use two phones (an iPhone and an Android phone if you can), ideally on different networks, for example one on school
+Wi-Fi and one on mobile data. Wear headphones.
+
+1. On both phones, sign in as two different test students in the same class.
+2. Phone A: pick a topic, tap **With a Partner**, allow the microphone. **Expected:** a 6-digit group PIN.
+3. Phone B: tap **Join a Partner**, type the PIN, allow the microphone.
+   - **Expected:** both names show with green dots, and "You can hear …" appears.
+   - Talk: each phone should hear the other.
+4. On a third device, sign in as another student and try the same PIN. **Expected:** "This group is full."
+5. Phone A: tap **Record** and have a short conversation, about 30 seconds.
+   - **Expected:** phone B shows "… is in charge" and has no Stop button.
+6. Phone A: tap **Stop**.
+   - **Expected:** "Putting your voices together…", then a player on both phones.
+   - Play it on both: it should have both voices, in sync.
+7. Phone A: tap **Try Again**, then record again and tap **Send**.
+   - **Expected:** **Sent!** on both phones.
+8. On the laptop, reload the class page.
+   - **Expected:** one recording, "Together", with both names.
+   - The mix plays. **Download Mix** and each student's **Voice** button download MP3s that play.
+9. Record once more and let it run to 3:00. **Expected:** it stops on its own on both phones.
+10. Close the tab on phone A while phone B is listening to a take.
+    - **Expected:** phone B gets Send and Try Again, because control passes to the student who is still there.
+
+If the call never connects ("Connecting you to …" doesn't go away) on some network, that network needs a TURN relay.
+See `ICE_SERVERS` in `.env.example`.
+
 ## Not covered yet
 
 - Real iPhone Safari and Android Chrome have not been tested automatically. Playwright's WebKit on Windows has no
-  `MediaRecorder`, so it only checks layout. Use the manual test above.
+  `MediaRecorder` or working live call, so it only checks layout. Use the manual tests above.
+- Live calls across real networks (NAT, school firewalls, mobile data) have not been tested. The automated test runs
+  both browsers on one machine.
 - Recovery after a server restart in the middle of processing a submission (`resumeInterruptedTracks` and
   `resumeSettledSubmissions`) runs at
   startup but has no automated test.

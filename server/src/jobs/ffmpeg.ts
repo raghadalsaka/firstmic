@@ -291,3 +291,30 @@ export async function mixedAudioExport(
   args.push(output);
   await run(FFMPEG, args);
 }
+
+/**
+ * A group take in one ffmpeg pass: each voice lined up on the take's timeline as its own MP3 (`voiceOutputs[i]` for
+ * `inputs[i]`), plus the mix of all of them, each mono MP3 cut at `durationMs`.
+ */
+export async function groupTakeExport(
+  inputs: MixInput[],
+  mixOutput: string,
+  voiceOutputs: string[],
+  durationMs: number
+): Promise<void> {
+  const args: string[] = ["-y"];
+  for (const input of inputs) args.push("-i", input.filePath);
+  const filters: string[] = [];
+  inputs.forEach((input, i) => {
+    const delay = Math.max(0, Math.round(input.offsetMs));
+    filters.push(`[${i}:a]aresample=async=1:first_pts=0,adelay=${delay}|${delay},asplit=2[voice${i}][tomix${i}]`);
+  });
+  filters.push(
+    `${inputs.map((_, i) => `[tomix${i}]`).join("")}amix=inputs=${inputs.length}:normalize=0:dropout_transition=0[mix]`
+  );
+  args.push("-filter_complex", filters.join(";"));
+  const mp3 = ["-t", (durationMs / 1000).toFixed(3), "-ac", "1", "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "128k"];
+  args.push("-map", "[mix]", ...mp3, mixOutput);
+  voiceOutputs.forEach((output, i) => args.push("-map", `[voice${i}]`, ...mp3, output));
+  await run(FFMPEG, args);
+}

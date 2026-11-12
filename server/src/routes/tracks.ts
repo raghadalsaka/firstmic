@@ -15,6 +15,9 @@ const createTrackSchema = z.object({
   startOffsetMs: z.number().int().min(-60_000).max(60 * 60 * 1000),
 });
 
+// A replaced or thrown-away take, or one whose chunks are all in.
+const UPLOADS_CLOSED = "This recording isn't taking uploads any more";
+
 const finalizeSchema = z.object({
   finalChunkCount: z.number().int().min(0).max(1_000_000),
   durationMs: z.number().int().min(0).optional(),
@@ -88,7 +91,7 @@ export function registerTrackRoutes(app: FastifyInstance): void {
     if (!Number.isInteger(idx) || idx < 0) return reply.code(400).send({ error: "Bad chunk index" });
     const track = trackForParticipant(trackId, participant.id);
     if (!track) return reply.code(404).send({ error: "Track not found" });
-    if (track.status === "failed") return reply.code(409).send({ error: "This recording was replaced by a newer one" });
+    if (track.status === "failed") return reply.code(409).send({ error: UPLOADS_CLOSED });
 
     const body = req.body as Buffer;
     if (!Buffer.isBuffer(body) || body.length === 0) {
@@ -99,6 +102,10 @@ export function registerTrackRoutes(app: FastifyInstance): void {
       .prepare("SELECT size_bytes FROM chunks WHERE track_id = ? AND idx = ?")
       .get(trackId, idx) as { size_bytes: number } | undefined;
     if (existing) return { ok: true, duplicate: true };
+    // Once every chunk is in, processing owns the files; a late chunk would only be left behind on disk.
+    if (track.status !== "recording" && track.status !== "uploading") {
+      return reply.code(409).send({ error: UPLOADS_CLOSED });
+    }
 
     const filePath = chunkPath(trackId, idx);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });

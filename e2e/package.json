@@ -7,7 +7,9 @@
     "media": "node make-media.mjs",
     "api": "node api-smoke.mjs",
     "solo": "node solo-e2e.mjs",
-    "webkit": "node webkit-layout.mjs"
+    "webkit": "node webkit-layout.mjs",
+    "group-api": "node group-smoke.mjs",
+    "group": "node group-e2e.mjs"
   },
   "devDependencies": {
     "playwright": "1.49.1"

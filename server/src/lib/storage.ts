@@ -50,3 +50,13 @@ export function exportPath(exportId: string, ext: string): string {
 export function submissionAudioPath(submissionId: string): string {
   return path.join(SUBMISSIONS_DIR, `${submissionId}.mp3`);
 }
+
+/** A group take's mix of both voices: what the students listen to and the teacher plays. */
+export function groupMixPath(takeId: string): string {
+  return path.join(SUBMISSIONS_DIR, `${takeId}.mix.mp3`);
+}
+
+/** One student's voice from a group take, lined up with the mix. */
+export function groupVoicePath(trackId: string): string {
+  return path.join(SUBMISSIONS_DIR, `${trackId}.voice.mp3`);
+}

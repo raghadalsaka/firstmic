@@ -92,3 +92,26 @@ export function loadPendingTake(classToken: string, topicId: string): string | n
 export function savePendingTake(classToken: string, topicId: string, localId: string | null): void {
   write(key(classToken, `take:${topicId}`), localId)
 }
+
+/** A group take's voice this device recorded but hasn't finished uploading, so a reload can finish it. */
+export type PendingVoice = { takeId: string; localId: string; startOffsetMs: number }
+
+export function loadPendingVoice(classToken: string, groupId: string): PendingVoice | null {
+  const raw = read(key(classToken, `voice:${groupId}`))
+  if (!raw) {
+    return null
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<PendingVoice>
+    if (typeof parsed.takeId === 'string' && typeof parsed.localId === 'string' && typeof parsed.startOffsetMs === 'number') {
+      return { takeId: parsed.takeId, localId: parsed.localId, startOffsetMs: parsed.startOffsetMs }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+export function savePendingVoice(classToken: string, groupId: string, voice: PendingVoice | null): void {
+  write(key(classToken, `voice:${groupId}`), voice ? JSON.stringify(voice) : null)
+}

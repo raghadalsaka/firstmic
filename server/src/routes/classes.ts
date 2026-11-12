@@ -5,7 +5,7 @@ import { requireUser } from "../lib/auth.js";
 import { newId, newToken } from "../lib/ids.js";
 import { requireClassMember, sessionForMember } from "../lib/access.js";
 import { safeName } from "../lib/filenames.js";
-import { submissionAudioPath } from "../lib/storage.js";
+import { groupMixPath, groupVoicePath, submissionAudioPath } from "../lib/storage.js";
 import { streamFile } from "../lib/http-file.js";
 import { deleteEpisodes } from "../jobs/submissions.js";
 import { classStudents } from "../lib/roster.js";
@@ -57,6 +57,70 @@ function submissionForMember(submissionId: string, userId: string): TeacherSubmi
   return row ?? null;
 }
 
+type GroupRecordingRow = {
+  id: string;
+  episode_id: string;
+  version: number;
+  duration_ms: number | null;
+  sent_at: number;
+  topic_id: string | null;
+  topic_title: string | null;
+};
+
+type GroupVoiceRow = { take_id: string; track_id: string; student_id: string | null; name: string };
+
+/** Each group's sent take, with the voice file of each member in the order they joined. */
+function groupRecordings(studioId: string): (GroupRecordingRow & { voices: Omit<GroupVoiceRow, "take_id">[] })[] {
+  const takes = db
+    .prepare(
+      `SELECT gt.id, s.id AS episode_id, gt.version, gt.duration_ms, gt.sent_at, t.id AS topic_id, t.title AS topic_title
+       FROM sessions s
+       INNER JOIN group_takes gt ON gt.id = s.current_take_id
+       LEFT JOIN topics t ON t.id = s.topic_id
+       WHERE s.studio_id = ? AND s.kind = 'group'
+       ORDER BY gt.sent_at DESC`
+    )
+    .all(studioId) as GroupRecordingRow[];
+  const voices = db
+    .prepare(
+      `SELECT gt.id AS take_id, tr.id AS track_id, p.student_id, COALESCE(stu.name, p.name) AS name
+       FROM sessions s
+       INNER JOIN group_takes gt ON gt.id = s.current_take_id
+       INNER JOIN tracks tr ON tr.recording_id = gt.recording_id
+       INNER JOIN participants p ON p.id = tr.participant_id
+       LEFT JOIN students stu ON stu.id = p.student_id
+       WHERE s.studio_id = ? AND s.kind = 'group'
+       ORDER BY p.created_at, p.id`
+    )
+    .all(studioId) as GroupVoiceRow[];
+  return takes.map((take) => ({
+    ...take,
+    voices: voices.filter((voice) => voice.take_id === take.id).map(({ take_id: _takeId, ...voice }) => voice),
+  }));
+}
+
+type TeacherGroupTake = { id: string; version: number; topic_title: string | null; class_name: string; names: string };
+
+/** A group's sent take, if the teacher is a member of its class. */
+function groupTakeForMember(takeId: string, userId: string): TeacherGroupTake | null {
+  const row = db
+    .prepare(
+      `SELECT gt.id, gt.version, t.title AS topic_title, st.name AS class_name,
+         (SELECT GROUP_CONCAT(name, ' ') FROM (
+            SELECT COALESCE(stu.name, p.name) AS name FROM participants p
+            LEFT JOIN students stu ON stu.id = p.student_id
+            WHERE p.session_id = s.id ORDER BY p.created_at, p.id)) AS names
+       FROM group_takes gt
+       INNER JOIN sessions s ON s.id = gt.session_id AND s.current_take_id = gt.id
+       INNER JOIN studios st ON st.id = s.studio_id
+       INNER JOIN studio_members m ON m.studio_id = st.id AND m.user_id = ?
+       LEFT JOIN topics t ON t.id = s.topic_id
+       WHERE gt.id = ?`
+    )
+    .get(userId, takeId) as TeacherGroupTake | undefined;
+  return row ?? null;
+}
+
 export function registerClassRoutes(app: FastifyInstance): void {
   app.get("/api/teacher/classes", async (req, reply) => {
     const user = requireUser(req, reply);
@@ -67,8 +131,8 @@ export function registerClassRoutes(app: FastifyInstance): void {
       .prepare(
         `SELECT s.id, s.name, s.created_at,
            (SELECT COUNT(*) FROM topics WHERE studio_id = s.id) AS topic_count,
-           (SELECT COUNT(*) FROM sessions WHERE studio_id = s.id AND kind = 'solo'
-              AND current_submission_id IS NOT NULL) AS submission_count
+           (SELECT COUNT(*) FROM sessions WHERE studio_id = s.id
+              AND (current_submission_id IS NOT NULL OR current_take_id IS NOT NULL)) AS submission_count
          FROM studios s INNER JOIN studio_members m ON m.studio_id = s.id AND m.user_id = ?
          ORDER BY s.created_at DESC`
       )
@@ -131,6 +195,7 @@ export function registerClassRoutes(app: FastifyInstance): void {
       topics,
       students,
       submissions,
+      groupRecordings: groupRecordings(studio.id),
     };
   });
 
@@ -271,6 +336,39 @@ export function registerClassRoutes(app: FastifyInstance): void {
     );
   });
 
+  // The mix of both voices (?voice=<trackId> for one student's voice), to play inline or download.
+  app.get("/api/teacher/group-takes/:takeId/audio", async (req, reply) => {
+    const user = requireUser(req, reply);
+    if (!user) {
+      return;
+    }
+    const { takeId } = req.params as { takeId: string };
+    const take = groupTakeForMember(takeId, user.id);
+    if (!take) {
+      return reply.code(404).send({ error: "Recording not found" });
+    }
+    const { download, voice } = req.query as { download?: string; voice?: string };
+    const baseName = [take.class_name, take.topic_title ?? "topic"].map(safeName).join("-");
+    if (voice === undefined) {
+      const fileName = `${baseName}-${safeName(take.names)}-mix-v${take.version}.mp3`;
+      return streamFile(req, reply, groupMixPath(take.id), fileName, "audio/mpeg", download !== "1");
+    }
+    const track = db
+      .prepare(
+        `SELECT COALESCE(stu.name, p.name) AS name FROM tracks tr
+         INNER JOIN group_takes gt ON gt.recording_id = tr.recording_id AND gt.id = ?
+         INNER JOIN participants p ON p.id = tr.participant_id
+         LEFT JOIN students stu ON stu.id = p.student_id
+         WHERE tr.id = ?`
+      )
+      .get(take.id, voice) as { name: string } | undefined;
+    if (!track) {
+      return reply.code(404).send({ error: "Recording not found" });
+    }
+    const fileName = `${baseName}-${safeName(track.name)}-v${take.version}.mp3`;
+    return streamFile(req, reply, groupVoicePath(voice), fileName, "audio/mpeg", download !== "1");
+  });
+
   app.delete("/api/teacher/episodes/:episodeId", async (req, reply) => {
     const user = requireUser(req, reply);
     if (!user) {
@@ -278,7 +376,7 @@ export function registerClassRoutes(app: FastifyInstance): void {
     }
     const { episodeId } = req.params as { episodeId: string };
     const episode = sessionForMember(episodeId, user.id);
-    if (!episode || episode.kind !== "solo") {
+    if (!episode || (episode.kind !== "solo" && episode.kind !== "group")) {
       return reply.code(404).send({ error: "Episode not found" });
     }
     const { recordings } = deleteEpisodes("id", episode.id);

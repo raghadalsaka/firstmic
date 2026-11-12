@@ -15,7 +15,7 @@ const MAX_BACKOFF_MS = 30_000
 const RETRYABLE_CLIENT_ERRORS: readonly number[] = [408, 429]
 
 /** A 4xx other than timeout/rate-limit means the server will refuse every retry. */
-function isRejection(status: number): boolean {
+export function isRejection(status: number): boolean {
   return status >= 400 && status < 500 && !RETRYABLE_CLIENT_ERRORS.includes(status)
 }
 

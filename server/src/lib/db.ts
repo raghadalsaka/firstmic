@@ -217,6 +217,39 @@ CREATE INDEX IF NOT EXISTS idx_student_logins_student ON student_logins(student_
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_student_topic ON sessions(student_id, topic_id) WHERE student_id IS NOT NULL;
 `);
 
+addColumns([
+  "ALTER TABLE participants ADD COLUMN student_id TEXT REFERENCES students(id) ON DELETE CASCADE",
+  "ALTER TABLE sessions ADD COLUMN group_pin TEXT",
+  "ALTER TABLE sessions ADD COLUMN current_take_id TEXT",
+]);
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS group_takes (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  recording_id TEXT NOT NULL REFERENCES recordings(id) ON DELETE CASCADE,
+  controller_id TEXT NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'recording', -- recording | mixing | listening | failed | discarded | sent | replaced
+  version INTEGER, -- set when the take is sent
+  duration_ms INTEGER,
+  error TEXT,
+  created_at INTEGER NOT NULL, -- when recording started
+  stopped_at INTEGER,
+  sent_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_takes_session ON group_takes(session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_group_takes_recording ON group_takes(recording_id);
+CREATE INDEX IF NOT EXISTS idx_participants_student ON participants(student_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_group_pin ON sessions(studio_id, group_pin) WHERE group_pin IS NOT NULL;
+`);
+
+// Backfill: solo episodes' participants name their student, as group members do (idempotent).
+db.exec(`
+  UPDATE participants SET student_id = (SELECT s.student_id FROM sessions s WHERE s.id = participants.session_id)
+  WHERE student_id IS NULL AND session_id IN (SELECT id FROM sessions WHERE student_id IS NOT NULL)
+`);
+
 // Backfill: every studio's creator is an owner member (idempotent).
 db.exec(`
   INSERT OR IGNORE INTO studio_members (studio_id, user_id, role, created_at)
@@ -253,11 +286,32 @@ export type SessionRow = {
   auto_record?: number;
   waiting_room?: number;
   teleprompter_script?: string | null;
-  /** Null for live-room sessions; "solo" for a solo episode. */
-  kind?: "solo" | null;
+  /** Null for Tributary live-room sessions; "solo" for a solo episode; "group" for a two-person podcast. */
+  kind?: "solo" | "group" | null;
   topic_id?: string | null;
   current_submission_id?: string | null;
+  /** Solo episodes only; a group's students are its participants' student_id. */
   student_id?: string | null;
+  /** Groups only: the PIN a partner types to join. */
+  group_pin?: string | null;
+  /** Groups only: the sent take the teacher sees. */
+  current_take_id?: string | null;
+};
+
+export type GroupTakeStatus = "recording" | "mixing" | "listening" | "failed" | "discarded" | "sent" | "replaced";
+
+export type GroupTakeRow = {
+  id: string;
+  session_id: string;
+  recording_id: string;
+  controller_id: string;
+  status: GroupTakeStatus;
+  version: number | null;
+  duration_ms: number | null;
+  error: string | null;
+  created_at: number;
+  stopped_at: number | null;
+  sent_at: number | null;
 };
 
 export type StudentRow = {
@@ -310,6 +364,7 @@ export type ParticipantRow = {
   joined_at: number | null;
   left_at: number | null;
   admitted_at?: number | null;
+  student_id?: string | null;
 };
 
 export type RecordingRow = {

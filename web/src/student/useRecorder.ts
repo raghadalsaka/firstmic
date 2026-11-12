@@ -1,6 +1,7 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { api, ApiError } from '../services/api'
 import { discardTake, loadStoredTake, pickAudioMimeType, TakeRecorder, type FinishedTake } from '../recorder/local-take'
+import { MIC_CONSTRAINTS, requestWakeLock, type WakeLock } from '../recorder/device'
 import { EpisodeGoneError, sendTake } from '../recorder/send'
 import { loadEpisode, loadPendingTake, saveEpisode, savePendingTake, type StoredEpisode } from './storage'
 
@@ -42,7 +43,7 @@ export function useRecorder(options: {
   let recorder: TakeRecorder | null = null
   let stream: MediaStream | null = null
   let ticker: number | null = null
-  let wakeLock: { release(): Promise<void> } | null = null
+  let wakeLock: WakeLock | null = null
 
   function setTake(next: FinishedTake | null): void {
     if (audioUrl.value) {
@@ -110,10 +111,7 @@ export function useRecorder(options: {
       return
     }
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        video: false,
-      })
+      stream = await navigator.mediaDevices.getUserMedia({ audio: MIC_CONSTRAINTS, video: false })
     } catch {
       phase.value = 'mic-blocked'
       return
@@ -131,12 +129,7 @@ export function useRecorder(options: {
     ticker = window.setInterval(() => {
       elapsedMs.value = recorder?.elapsedMs() ?? 0
     }, TICK_MS)
-    try {
-      const nav = navigator as Navigator & { wakeLock?: { request(type: 'screen'): Promise<{ release(): Promise<void> }> } }
-      wakeLock = (await nav.wakeLock?.request('screen')) ?? null
-    } catch {
-      wakeLock = null
-    }
+    wakeLock = await requestWakeLock()
   }
 
   async function stop(): Promise<void> {

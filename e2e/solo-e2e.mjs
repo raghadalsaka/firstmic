@@ -94,6 +94,7 @@ await student.getByRole('button', { name: 'Next' }).click()
 await student.getByText('Hi Ali! Pick a topic').waitFor()
 await shot(student, 'student-2-topics')
 await student.getByRole('button', { name: 'My favourite animal' }).click()
+await student.getByRole('button', { name: 'On My Own' }).click()
 await student.getByRole('button', { name: 'Record' }).waitFor()
 await shot(student, 'student-3-ready')
 ok('student picks the class, then their name; a wrong PIN is refused and the right one gets in')
@@ -133,6 +134,7 @@ await student.getByRole('button', { name: 'Stop' }).click()
 await student.getByRole('button', { name: 'Send' }).waitFor()
 await student.reload()
 await student.getByRole('button', { name: 'My favourite animal' }).click()
+await student.getByRole('button', { name: 'On My Own' }).click()
 await student.getByRole('button', { name: 'Send' }).waitFor()
 ok('a stopped take is still there after a page reload')
 
@@ -217,6 +219,7 @@ for (const [label, device] of [['iphone13', devices['iPhone 13']], ['pixel7', de
   await shot(page, `${label}-pin`)
   await page.getByRole('button', { name: 'Next' }).click()
   await page.getByRole('button', { name: 'A day at school' }).click()
+  await page.getByRole('button', { name: 'On My Own' }).click()
   await page.getByRole('button', { name: 'Record' }).waitFor()
   for (const step of ['ready', 'recording', 'recorded']) {
     if (step === 'recording') {

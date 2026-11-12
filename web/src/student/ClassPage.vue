@@ -7,6 +7,8 @@ import { api, ApiError, errorMessage } from '../services/api'
 import type { PublicStudent } from '../types/roster'
 import { isPin } from '../utils/roster'
 import { classPath } from '../utils/slug'
+import type { GroupAccess } from '../group/types'
+import GroupPanel from './GroupPanel.vue'
 import RecordPanel from './RecordPanel.vue'
 import { forgetStudent, loadLogin, saveLogin, type StoredLogin } from './storage'
 
@@ -25,8 +27,16 @@ const pin = ref('')
 const pinError = ref('')
 const signingIn = ref(false)
 const topic = ref<Topic | null>(null)
+const recordAlone = ref(false)
+const groupAccess = ref<GroupAccess | null>(null)
+const joining = ref(false)
+const groupPin = ref('')
+const groupError = ref('')
+const groupBusy = ref(false)
+const notice = ref('')
 
 const pinComplete = computed(() => isPin(pin.value))
+const groupPinComplete = computed(() => isPin(groupPin.value))
 
 /** A sign-in kept on this device still counts only if the server agrees (the PIN may have changed). */
 async function restoreLogin(): Promise<void> {
@@ -93,7 +103,63 @@ function notMe(): void {
   forgetStudent(props.classToken)
   login.value = null
   picked.value = null
+  backToTopics()
+}
+
+function backToTopics(): void {
   topic.value = null
+  recordAlone.value = false
+  groupAccess.value = null
+  joining.value = false
+  groupError.value = ''
+}
+
+function pickTopic(item: Topic): void {
+  notice.value = ''
+  topic.value = item
+}
+
+/** Opens the student's group for the topic (or the one they join by PIN); a 401 means their sign-in stopped working. */
+async function openGroup(path: string, body: Record<string, string>): Promise<void> {
+  if (!login.value || groupBusy.value) {
+    return
+  }
+  groupBusy.value = true
+  groupError.value = ''
+  try {
+    groupAccess.value = await api<GroupAccess>(`/api/class/${encodeURIComponent(props.classToken)}/${path}`, {
+      token: login.value.studentToken,
+      body,
+    })
+    joining.value = false
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) {
+      notMe()
+      return
+    }
+    groupError.value = errorMessage(err, "Couldn't reach First Mic. Check your internet and try again.")
+    groupPin.value = ''
+  } finally {
+    groupBusy.value = false
+  }
+}
+
+function startJoining(): void {
+  notice.value = ''
+  groupPin.value = ''
+  groupError.value = ''
+  joining.value = true
+}
+
+/** The group token stopped working: either the student's PIN changed, or the teacher removed the group. */
+async function groupGone(): Promise<void> {
+  backToTopics()
+  await restoreLogin()
+  if (!loadLogin(props.classToken)) {
+    notMe()
+    return
+  }
+  notice.value = "That group isn't available any more. Ask your teacher if you're not sure why."
 }
 </script>
 
@@ -156,6 +222,40 @@ function notMe(): void {
       </ul>
     </section>
 
+    <GroupPanel
+      v-else-if="groupAccess"
+      :key="groupAccess.groupId"
+      :class-token="classToken"
+      :group-id="groupAccess.groupId"
+      :token="groupAccess.token"
+      @leave="backToTopics"
+      @gone="groupGone"
+    />
+
+    <section v-else-if="joining" class="flex flex-col items-center gap-5 text-center">
+      <h1 class="font-display text-3xl font-extrabold">Join a partner</h1>
+      <form class="flex w-full max-w-xs flex-col gap-4" @submit.prevent="openGroup('groups/join', { pin: groupPin })">
+        <label for="group-pin" class="text-lg font-semibold">Type your partner's group PIN</label>
+        <input
+          id="group-pin"
+          v-model="groupPin"
+          class="field-input text-center font-mono text-3xl tracking-[0.4em]"
+          inputmode="numeric"
+          autocomplete="off"
+          :maxlength="PIN_LENGTH"
+          pattern="[0-9]*"
+          @input="groupPin = groupPin.replace(/\D/g, '')"
+        />
+        <p v-if="groupError" class="alert-bad" role="alert">{{ groupError }}</p>
+        <button class="btn btn-primary btn-large" type="submit" :disabled="!groupPinComplete || groupBusy">
+          {{ groupBusy ? 'Checking…' : 'Join' }}
+        </button>
+      </form>
+      <button class="-my-2 py-2 text-base font-semibold text-ink-soft underline underline-offset-4" @click="backToTopics">
+        Back
+      </button>
+    </section>
+
     <section v-else-if="!topic" class="flex flex-col gap-4">
       <div class="flex items-center justify-between gap-3">
         <h1 class="flex items-center gap-3 font-display text-2xl font-extrabold" dir="auto">
@@ -169,14 +269,38 @@ function notMe(): void {
       <p v-if="info.topics.length === 0" class="panel p-6 text-center text-ink-soft">
         Your teacher hasn't added topics yet. Check back soon.
       </p>
+      <p v-if="notice" class="alert-bad" role="status">{{ notice }}</p>
       <button
         v-for="item in info.topics"
         :key="item.id"
         class="btn btn-large w-full justify-start text-left"
         dir="auto"
-        @click="topic = item"
+        @click="pickTopic(item)"
       >
         {{ item.title }}
+      </button>
+      <div class="mt-4 flex flex-col items-center gap-3 border-t-3 border-rule pt-6 text-center">
+        <p class="text-ink-soft">Did a partner give you a group PIN?</p>
+        <button class="btn" @click="startJoining">Join a Partner</button>
+      </div>
+    </section>
+
+    <section v-else-if="!recordAlone" class="flex flex-col items-center gap-5 text-center">
+      <div>
+        <p class="text-ink-soft">Your topic</p>
+        <h1 class="font-display text-3xl font-extrabold" dir="auto">{{ topic.title }}</h1>
+      </div>
+      <p class="text-lg font-semibold">How do you want to record?</p>
+      <div class="flex w-full max-w-sm flex-col gap-4">
+        <button class="btn btn-primary btn-large" @click="recordAlone = true">On My Own</button>
+        <button class="btn btn-large" :disabled="groupBusy" @click="openGroup('groups', { topicId: topic.id })">
+          {{ groupBusy ? 'Opening…' : 'With a Partner' }}
+        </button>
+      </div>
+      <p class="max-w-sm text-ink-soft">With a partner, you get a group PIN to share. You talk live and record one podcast together.</p>
+      <p v-if="groupError" class="alert-bad max-w-sm" role="alert">{{ groupError }}</p>
+      <button class="-my-2 py-2 text-base font-semibold text-ink-soft underline underline-offset-4" @click="backToTopics">
+        Change topic
       </button>
     </section>
 
@@ -188,7 +312,7 @@ function notMe(): void {
       :topic-title="topic.title"
       :student-token="login.studentToken"
       :max-seconds="info.maxSeconds"
-      @change-topic="topic = null"
+      @change-topic="backToTopics"
       @signed-out="notMe"
     />
   </main>

@@ -25,6 +25,10 @@ on Cloudflare, set it to **DNS only** (grey cloud) so Caddy can get its certific
 Under **Networking → Firewalls**, allow inbound TCP 22 (SSH), TCP 80 and TCP 443, plus UDP 443 for HTTP/3. Attach the
 firewall to the Droplet.
 
+Two-person podcasts don't need more ports: the live call's signalling goes through Caddy on 443 (`/ws`), and the
+audio goes straight between the two phones. Phones that can't reach each other directly need a TURN relay (see
+`ICE_SERVERS` in `.env.example`); First Mic doesn't run one.
+
 ## 4. Install and start
 
 ```bash

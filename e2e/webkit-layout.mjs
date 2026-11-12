@@ -42,8 +42,17 @@ const steps = [
     await page.getByRole('button', { name: 'Next' }).click()
     await page.getByText('Pick a topic').waitFor()
   }],
-  ['record', async () => {
+  ['join-partner', async () => {
+    await page.getByRole('button', { name: 'Join a Partner' }).click()
+    await page.getByLabel("Type your partner's group PIN").waitFor()
+  }],
+  ['choose', async () => {
+    await page.getByRole('button', { name: 'Back' }).click()
     await page.getByRole('button', { name: /A very long topic/ }).click()
+    await page.getByText('How do you want to record?').waitFor()
+  }],
+  ['record', async () => {
+    await page.getByRole('button', { name: 'On My Own' }).click()
     await page.getByText('Your topic').waitFor()
   }],
 ]

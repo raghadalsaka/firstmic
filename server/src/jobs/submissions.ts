@@ -2,11 +2,14 @@ import fs from "node:fs";
 import { db, type SubmissionRow, type TrackRow } from "../lib/db.js";
 import { MAX_EPISODE_SECONDS } from "../lib/config.js";
 import {
+  groupMixPath,
+  groupVoicePath,
   rawTrackPath,
   submissionAudioPath,
   trackChunksDir,
   wavTrackPath,
 } from "../lib/storage.js";
+import { disconnect } from "../lib/rooms.js";
 import { enqueue, getTrack, onTrackSettled } from "./pipeline.js";
 import { probe, toSubmissionMp3 } from "./ffmpeg.js";
 
@@ -29,32 +32,56 @@ export function removeTrackMedia(trackId: string): void {
   }
 }
 
+// A student's episodes include the groups they're a member of, so removing them never leaves their voice behind.
+const EPISODES_IN_SCOPE: Record<"id" | "student_id" | "topic_id", string> = {
+  id: "SELECT id FROM sessions WHERE id = @value",
+  topic_id: "SELECT id FROM sessions WHERE topic_id = @value",
+  student_id:
+    "SELECT id FROM sessions WHERE student_id = @value UNION SELECT session_id FROM participants WHERE student_id = @value",
+};
+
+/** Everything on disk for these group takes and tracks (solo or group): mixes, voice MP3s and intermediates. */
+export function removeRecordingFiles(takeIds: readonly string[], trackIds: readonly string[]): void {
+  for (const takeId of takeIds) {
+    fs.rmSync(groupMixPath(takeId), { force: true });
+  }
+  for (const trackId of trackIds) {
+    fs.rmSync(groupVoicePath(trackId), { force: true });
+    removeTrackMedia(trackId);
+  }
+}
+
 /**
- * Deletes the episodes where `scope = value` (their submissions, tracks and tokens cascade), plus whatever
- * `alsoDelete` removes in the same transaction, then the episodes' files.
+ * Deletes the episodes in scope (solo and group: their submissions, takes, tracks and tokens cascade), plus whatever
+ * `alsoDelete` removes in the same transaction, then the episodes' files, and closes their live rooms.
  */
 export function deleteEpisodes(
   scope: "id" | "student_id" | "topic_id",
   value: string,
   alsoDelete?: () => void
 ): { episodes: number; recordings: number } {
-  const { files, episodes } = db.transaction(() => {
-    const files = db
-      .prepare(
-        `SELECT sub.id, sub.track_id FROM submissions sub
-         INNER JOIN sessions s ON s.id = sub.session_id
-         WHERE s.${scope} = ?`
-      )
-      .all(value) as Pick<SubmissionRow, "id" | "track_id">[];
-    const episodes = db.prepare(`DELETE FROM sessions WHERE ${scope} = ?`).run(value).changes;
+  const episodesInScope = EPISODES_IN_SCOPE[scope];
+  const { sessionIds, submissionIds, takeIds, trackIds } = db.transaction(() => {
+    const ids = (sql: string): string[] =>
+      (db.prepare(sql).all({ value }) as { id: string }[]).map((row) => row.id);
+    const found = {
+      sessionIds: ids(episodesInScope),
+      submissionIds: ids(`SELECT id FROM submissions WHERE session_id IN (${episodesInScope})`),
+      takeIds: ids(`SELECT id FROM group_takes WHERE session_id IN (${episodesInScope})`),
+      trackIds: ids(`SELECT id FROM tracks WHERE session_id IN (${episodesInScope})`),
+    };
+    db.prepare(`DELETE FROM sessions WHERE id IN (${episodesInScope})`).run({ value });
     alsoDelete?.();
-    return { files, episodes };
+    return found;
   })();
-  for (const file of files) {
-    fs.rmSync(submissionAudioPath(file.id), { force: true });
-    removeTrackMedia(file.track_id);
+  for (const submissionId of submissionIds) {
+    fs.rmSync(submissionAudioPath(submissionId), { force: true });
   }
-  return { episodes, recordings: files.length };
+  removeRecordingFiles(takeIds, trackIds);
+  for (const sessionId of sessionIds) {
+    disconnect(sessionId);
+  }
+  return { episodes: sessionIds.length, recordings: submissionIds.length + takeIds.length };
 }
 
 export function failSubmission(submissionId: string, reason: string): void {

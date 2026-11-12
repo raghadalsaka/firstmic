@@ -19,11 +19,22 @@ type Submission = {
   topic_id: string | null
   topic_title: string | null
 }
+type GroupRecording = {
+  id: string
+  episode_id: string
+  version: number
+  duration_ms: number | null
+  sent_at: number
+  topic_id: string | null
+  topic_title: string | null
+  voices: { track_id: string; student_id: string | null; name: string }[]
+}
 type ClassDetail = {
   class: { id: string; name: string; classToken: string }
   topics: Topic[]
   students: RosterStudent[]
   submissions: Submission[]
+  groupRecordings: GroupRecording[]
 }
 
 const props = defineProps<{ classId: string }>()
@@ -42,11 +53,23 @@ const classLink = computed(() =>
 )
 const classLinkShown = computed(() => decodeURI(classLink.value))
 // Recordings carry only the student's id; the badge comes from the roster so each photo is sent once.
+const studentsById = computed(() => new Map((detail.value?.students ?? []).map((student) => [student.id, student])))
 const visibleSubmissions = computed(() => {
-  const students = new Map((detail.value?.students ?? []).map((student) => [student.id, student]))
+  const students = studentsById.value
   return (detail.value?.submissions ?? [])
     .filter((item) => !topicFilter.value || item.topic_id === topicFilter.value)
     .map((item) => ({ ...item, student: item.student_id ? students.get(item.student_id) : undefined }))
+})
+
+const visibleGroupRecordings = computed(() => {
+  const students = studentsById.value
+  return (detail.value?.groupRecordings ?? [])
+    .filter((item) => !topicFilter.value || item.topic_id === topicFilter.value)
+    .map((item) => ({
+      ...item,
+      names: item.voices.map((voice) => voice.name).join(' & '),
+      voices: item.voices.map((voice) => ({ ...voice, student: voice.student_id ? students.get(voice.student_id) : undefined })),
+    }))
 })
 
 async function load(): Promise<void> {
@@ -137,7 +160,9 @@ function moveTopic(index: number, offset: -1 | 1): void {
 }
 
 function deleteTopic(topic: Topic): void {
-  const recordings = detail.value?.submissions.filter((item) => item.topic_id === topic.id).length ?? 0
+  const recordings =
+    (detail.value?.submissions.filter((item) => item.topic_id === topic.id).length ?? 0) +
+    (detail.value?.groupRecordings.filter((item) => item.topic_id === topic.id).length ?? 0)
   const warning =
     recordings === 0
       ? 'No recordings have been sent for it yet.'
@@ -148,11 +173,11 @@ function deleteTopic(topic: Topic): void {
   void run(() => api(`/api/teacher/topics/${topic.id}`, { method: 'DELETE' }))
 }
 
-function deleteRecording(item: Submission): void {
-  if (!window.confirm(`Delete ${item.student_name}'s recording? This can't be undone.`)) {
+function deleteEpisode(episodeId: string, question: string): void {
+  if (!window.confirm(`${question} This can't be undone.`)) {
     return
   }
-  void run(() => api(`/api/teacher/episodes/${item.episode_id}`, { method: 'DELETE' }))
+  void run(() => api(`/api/teacher/episodes/${episodeId}`, { method: 'DELETE' }))
 }
 </script>
 
@@ -228,7 +253,44 @@ function deleteRecording(item: Submission): void {
             <option v-for="topic in detail.topics" :key="topic.id" :value="topic.id">{{ topic.title }}</option>
           </select>
         </div>
-        <p v-if="visibleSubmissions.length === 0" class="text-ink-soft">No recordings yet.</p>
+        <p v-if="visibleSubmissions.length === 0 && visibleGroupRecordings.length === 0" class="text-ink-soft">No recordings yet.</p>
+        <ul v-if="visibleGroupRecordings.length > 0" class="flex flex-col gap-4">
+          <li
+            v-for="item in visibleGroupRecordings"
+            :key="item.id"
+            class="flex flex-col gap-3 rounded-tile border-3 border-rule p-4"
+            data-testid="group-recording"
+          >
+            <div class="flex flex-wrap items-baseline justify-between gap-2">
+              <p class="flex flex-wrap items-center gap-2 text-lg font-bold" dir="auto">
+                <template v-for="voice in item.voices" :key="voice.track_id">
+                  <StudentBadge v-if="voice.student" :student="voice.student" size="sm" />
+                </template>
+                {{ item.names }}
+              </p>
+              <p class="text-ink-soft">
+                Together · {{ item.topic_title ?? 'Topic removed' }} ·
+                {{ item.duration_ms === null ? '' : formatClock(item.duration_ms) + ' · ' }}
+                <span v-if="item.version > 1">sent {{ item.version }} times · </span>
+                {{ formatDateTime(item.sent_at) }}
+              </p>
+            </div>
+            <audio :src="`/api/teacher/group-takes/${item.id}/audio`" controls preload="none" class="w-full"></audio>
+            <div class="flex flex-wrap gap-3">
+              <a class="btn btn-small" :href="`/api/teacher/group-takes/${item.id}/audio?download=1`">Download Mix</a>
+              <a
+                v-for="voice in item.voices"
+                :key="voice.track_id"
+                class="btn btn-small"
+                :href="`/api/teacher/group-takes/${item.id}/audio?voice=${voice.track_id}&download=1`"
+                dir="auto"
+              >
+                {{ voice.name }}'s Voice
+              </a>
+              <button class="btn btn-small" @click="deleteEpisode(item.episode_id, `Delete the podcast by ${item.names}? Their group is removed too.`)">Delete</button>
+            </div>
+          </li>
+        </ul>
         <ul class="flex flex-col gap-4">
           <li
             v-for="item in visibleSubmissions"
@@ -251,7 +313,7 @@ function deleteRecording(item: Submission): void {
             <audio :src="`/api/teacher/submissions/${item.id}/audio`" controls preload="none" class="w-full"></audio>
             <div class="flex flex-wrap gap-3">
               <a class="btn btn-small" :href="`/api/teacher/submissions/${item.id}/audio?download=1`">Download</a>
-              <button class="btn btn-small" @click="deleteRecording(item)">Delete</button>
+              <button class="btn btn-small" @click="deleteEpisode(item.episode_id, `Delete ${item.student_name}'s recording?`)">Delete</button>
             </div>
           </li>
         </ul>

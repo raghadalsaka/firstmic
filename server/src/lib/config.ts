@@ -27,4 +27,7 @@ export const GOOGLE_REQUEST_TIMEOUT_MS: number = positiveInt(process.env.GOOGLE_
 /** Wrong PINs in a row before that student is locked out for PIN_LOCK_MINUTES. */
 export const PIN_MAX_ATTEMPTS: number = positiveInt(process.env.PIN_MAX_ATTEMPTS, 5);
 export const PIN_LOCK_MINUTES: number = positiveInt(process.env.PIN_LOCK_MINUTES, 15);
+
+/** After a group take stops, how long the server waits for both voices to arrive before the take fails. */
+export const GROUP_UPLOAD_TIMEOUT_MS: number = positiveInt(process.env.FIRSTMIC_GROUP_UPLOAD_MINUTES, 5) * 60_000;
 export const PIN_ATTEMPTS_PER_MINUTE_PER_IP: number = positiveInt(process.env.PIN_ATTEMPTS_PER_MINUTE_PER_IP, 30);
