@@ -185,7 +185,7 @@ for (const page of [ali, sara]) {
 }
 await sara.getByText('Ali chooses Send or Try Again.').waitFor()
 assert.equal(await sara.getByRole('button', { name: 'Send' }).count(), 0)
-const saraPlayed = await playFor(sara, '[data-testid="mix-player"]', 1000)
+const saraPlayed = await playFor(sara, '[data-testid="mix-player"] audio', 1000)
 assert.ok(saraPlayed > 0.5, `Sara's mix playback did not advance (${saraPlayed})`)
 await fits(ali, 'ali-5-listening')
 await fits(sara, 'sara-4-listening-partner')
@@ -267,6 +267,48 @@ await row.waitFor()
 assert.match(await row.innerText(), /sent 2 times/)
 await shot(teacher, 'teacher-2')
 ok(`the take stops itself at the 10s limit (timer ${capped.replace(/\s+/g, ' ')}); sending it replaces version 1`)
+
+// ---- Feedback reaches both partners; replacing the commented take keeps it under Past Feedback ----
+const comment = 'You took turns really well.'
+await row.getByTestId('feedback-input').fill(comment)
+await row.getByRole('button', { name: 'Save Feedback' }).click()
+await row.getByText('Feedback saved. Students can see it.').waitFor()
+for (const page of [ali, sara]) {
+  await page.getByTestId('current-feedback').getByText(comment).waitFor()
+}
+await shot(sara, 'sara-feedback')
+ok('the teacher comments on version 2 and both partners see it without reloading')
+
+await ali.getByRole('button', { name: 'Try Again' }).click()
+await ali.getByRole('button', { name: 'Record' }).click()
+await sara.getByText('Ali is in charge. Ali taps Stop.').waitFor()
+await ali.waitForTimeout(2500)
+await ali.getByRole('button', { name: 'Stop' }).click()
+await ali.getByRole('button', { name: 'Send' }).click({ timeout: 30_000 })
+for (const page of [ali, sara]) {
+  await page.getByText('Sent!').waitFor({ timeout: 30_000 })
+  await page.getByTestId('past-feedback').getByText(comment).waitFor()
+}
+await sara.getByTestId('past-feedback').getByRole('button', { name: 'Listen' }).click()
+await sara.locator('[data-testid="past-feedback"] audio').waitFor({ state: 'attached' })
+const pastPlayed = await playFor(sara, '[data-testid="past-feedback"] audio', 1000)
+assert.ok(pastPlayed > 0.5, `Sara's past mix playback did not advance (${pastPlayed})`)
+await shot(sara, 'sara-past-feedback')
+
+await teacher.reload()
+await row.waitFor()
+assert.match(await row.innerText(), /sent 3 times/)
+const history = row.getByTestId('version-history')
+await history.locator('summary').click()
+const kept = history.getByTestId('past-version').first()
+assert.match(await kept.innerText(), /Version 2[\s\S]*took turns/)
+const keptLinks = await kept.locator('a').evaluateAll((as) => as.map((a) => ({ text: a.textContent.trim(), href: a.getAttribute('href') })))
+assert.deepEqual(keptLinks.map((l) => l.text), ['Download Mix', "Ali's Voice", "Sara's Voice"])
+for (const link of keptLinks) {
+  assert.equal((await teacherCtx.request.get(base + link.href)).status(), 200, link.text)
+}
+await shot(teacher, 'teacher-history')
+ok(`a new take replaces the commented one: the teacher keeps its mix and both voices; both partners see it under Past Feedback (Sara played ${pastPlayed.toFixed(2)}s)`)
 
 await aliBrowser.close()
 await saraBrowser.close()

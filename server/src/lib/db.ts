@@ -244,6 +244,16 @@ CREATE INDEX IF NOT EXISTS idx_participants_student ON participants(student_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_group_pin ON sessions(studio_id, group_pin) WHERE group_pin IS NOT NULL;
 `);
 
+// Teacher feedback: one comment per sent version. A replaced version keeps its audio only while it has one.
+addColumns([
+  "ALTER TABLE submissions ADD COLUMN feedback TEXT",
+  "ALTER TABLE submissions ADD COLUMN feedback_at INTEGER",
+  "ALTER TABLE submissions ADD COLUMN feedback_by TEXT REFERENCES users(id) ON DELETE SET NULL",
+  "ALTER TABLE group_takes ADD COLUMN feedback TEXT",
+  "ALTER TABLE group_takes ADD COLUMN feedback_at INTEGER",
+  "ALTER TABLE group_takes ADD COLUMN feedback_by TEXT REFERENCES users(id) ON DELETE SET NULL",
+]);
+
 // Backfill: solo episodes' participants name their student, as group members do (idempotent).
 db.exec(`
   UPDATE participants SET student_id = (SELECT s.student_id FROM sessions s WHERE s.id = participants.session_id)
@@ -312,6 +322,9 @@ export type GroupTakeRow = {
   created_at: number;
   stopped_at: number | null;
   sent_at: number | null;
+  feedback: string | null;
+  feedback_at: number | null;
+  feedback_by: string | null;
 };
 
 export type StudentRow = {
@@ -351,6 +364,9 @@ export type SubmissionRow = {
   error: string | null;
   created_at: number;
   ready_at: number | null;
+  feedback: string | null;
+  feedback_at: number | null;
+  feedback_by: string | null;
 };
 
 export type ParticipantRow = {

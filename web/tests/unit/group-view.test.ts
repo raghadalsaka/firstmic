@@ -11,10 +11,10 @@ function take(status: GroupTake['status'], controllerId = 'ali'): GroupTake {
 }
 
 function state(patch: Partial<GroupState> = {}): GroupState {
-  return { id: 'g', pin: '123456', topic: null, members: [member('ali'), member('sara')], take: null, sent: null, ...patch }
+  return { id: 'g', pin: '123456', topic: null, members: [member('ali'), member('sara')], take: null, sent: null, pastFeedback: [], ...patch }
 }
 
-const sent = { takeId: 'take-0', version: 1, durationMs: 5000, sentAt: 1 }
+const sent = { takeId: 'take-0', version: 1, durationMs: 5000, sentAt: 1, feedback: null }
 
 describe('groupView', () => {
   it('waits for a partner until someone joins with the PIN', () => {

@@ -1,0 +1,51 @@
+name: Configure droplet SSH
+description: >-
+  Writes the deployment key, a strict known_hosts entry from DEPLOY_HOST_KEY and an SSH config
+  alias "droplet". Callers run "ssh -n droplet ..." / "scp ... droplet:..." and remove ~/.ssh afterwards.
+  Same as LessonHub's droplet-ssh action.
+
+inputs:
+  host:
+    required: true
+  port:
+    description: SSH port; empty means 22
+    required: false
+  user:
+    required: true
+  ssh-key:
+    required: true
+  host-key:
+    description: '"<type> <base64>" as printed by ssh-keyscan without the host column'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        DEPLOY_HOST: ${{ inputs.host }}
+        DEPLOY_PORT: ${{ inputs.port }}
+        DEPLOY_USER: ${{ inputs.user }}
+        DEPLOY_SSH_KEY: ${{ inputs.ssh-key }}
+        DEPLOY_HOST_KEY: ${{ inputs.host-key }}
+      run: |
+        install -d -m 700 ~/.ssh
+        printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy
+        chmod 600 ~/.ssh/id_deploy
+        # HostKeyAlias makes ssh look the host key up under "droplet" whatever the host and port are.
+        printf 'droplet %s\n' "$DEPLOY_HOST_KEY" > ~/.ssh/known_hosts
+        chmod 600 ~/.ssh/known_hosts
+        {
+          echo "Host droplet"
+          echo "  HostName $DEPLOY_HOST"
+          echo "  Port ${DEPLOY_PORT:-22}"
+          echo "  User $DEPLOY_USER"
+          echo "  HostKeyAlias droplet"
+          echo "  IdentityFile ~/.ssh/id_deploy"
+          echo "  IdentitiesOnly yes"
+          echo "  BatchMode yes"
+          echo "  StrictHostKeyChecking yes"
+          echo "  ConnectTimeout 15"
+          echo "  ServerAliveInterval 15"
+        } > ~/.ssh/config
+        chmod 600 ~/.ssh/config

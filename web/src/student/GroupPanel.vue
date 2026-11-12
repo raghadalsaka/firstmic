@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import AudioPlayer from '../components/AudioPlayer.vue'
 import StudentBadge from '../components/StudentBadge.vue'
 import { SUGGESTED_MIN_SECONDS } from '../config'
 import { formatClock } from '../utils/format'
+import FeedbackPanel from './FeedbackPanel.vue'
 import { useGroupRoom } from './useGroupRoom'
 
 const props = defineProps<{ classToken: string; groupId: string; token: string }>()
@@ -31,6 +33,8 @@ const showTimer = computed(() => ['recording', 'mixing', 'listening'].includes(c
 const hitLimit = computed(() => elapsedMs.value >= maxMs.value - 250)
 const isShort = computed(() => elapsedMs.value < SUGGESTED_MIN_SECONDS * 1000)
 const canLeave = computed(() => current.value !== 'recording' && uploadPercent.value === null)
+// Feedback waits while the group is busy with a take, so it never sits between them and Stop, Send or Try Again.
+const showFeedback = computed(() => ['ready', 'sent', 'partner-away'].includes(current.value ?? ''))
 const callText = computed(() => {
   if (callState.value === 'connected') {
     return `You can hear ${partnerName.value}.`
@@ -116,7 +120,7 @@ const callText = computed(() => {
         <span class="size-3 animate-rec-pulse rounded-full bg-rec" aria-hidden="true"></span>
         Recording
       </p>
-      <button v-if="view?.canControl" class="btn btn-primary btn-mic" :disabled="busy" @click="room.stop">Stop</button>
+      <button v-if="view?.canControl" class="btn btn-primary btn-mic wave" :disabled="busy" @click="room.stop">Stop</button>
       <p v-else class="max-w-sm text-lg text-ink-soft">{{ controllerName }} is in charge. {{ controllerName }} taps Stop.</p>
     </template>
 
@@ -127,17 +131,16 @@ const callText = computed(() => {
     </template>
 
     <template v-else-if="current === 'listening'">
-      <audio
+      <AudioPlayer
         v-if="mixUrl"
         :src="mixUrl"
-        controls
-        preload="metadata"
-        class="w-full max-w-sm"
+        :duration-ms="elapsedMs"
+        class="max-w-sm"
         data-testid="mix-player"
         @play="room.setMicLive(false)"
         @pause="room.setMicLive(true)"
         @ended="room.setMicLive(true)"
-      ></audio>
+      />
       <p v-else class="text-ink-soft">Loading your recording…</p>
       <p v-if="hitLimit" class="text-ink-soft">Time's up! Your recording stopped at {{ formatClock(maxMs) }}.</p>
       <p v-else-if="isShort" class="text-ink-soft">Tip: try to talk for at least 2 minutes.</p>
@@ -156,7 +159,7 @@ const callText = computed(() => {
 
     <template v-else-if="current === 'sent'">
       <p class="animate-stamp font-display text-4xl font-extrabold text-good" role="status">Sent!</p>
-      <audio v-if="mixUrl" :src="mixUrl" controls preload="metadata" class="w-full max-w-sm"></audio>
+      <AudioPlayer v-if="mixUrl" :src="mixUrl" :duration-ms="group?.sent?.durationMs" class="max-w-sm" />
       <p class="max-w-sm text-ink-soft">Your teacher has your podcast. It stays with them until you send a new one.</p>
       <button class="btn" @click="room.tryAgain">Try Again</button>
     </template>
@@ -170,5 +173,13 @@ const callText = computed(() => {
     >
       Change topic
     </button>
+
+    <FeedbackPanel
+      v-if="group && showFeedback"
+      :current="group.sent?.feedback ?? null"
+      :past="group.pastFeedback"
+      :load-audio="room.loadPastMix"
+      @playing="(playing) => room.setMicLive(!playing)"
+    />
   </section>
 </template>

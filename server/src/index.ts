@@ -5,7 +5,7 @@ import fastifyStatic from "@fastify/static";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import "./lib/db.js";
+import { db } from "./lib/db.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerTrackRoutes } from "./routes/tracks.js";
 import { registerStudentRoutes } from "./routes/student.js";
@@ -78,3 +78,15 @@ app
     console.error(err);
     process.exit(1);
   });
+
+// `docker compose` stops the container with SIGTERM, which Node ignores as PID 1 until Docker kills it 10 s later.
+// Close the server (and the live-call sockets) and the database cleanly instead; interrupted jobs resume on startup.
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.once(signal, () => {
+    console.log(`First Mic server stopping (${signal})`);
+    void app.close().finally(() => {
+      db.close();
+      process.exit(0);
+    });
+  });
+}

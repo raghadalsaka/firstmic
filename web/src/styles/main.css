@@ -58,6 +58,17 @@
     }
   }
 
+  @keyframes wave {
+    from {
+      transform: scale(1);
+      opacity: 0.8;
+    }
+    to {
+      transform: scale(var(--wave-scale, 1.35));
+      opacity: 0;
+    }
+  }
+
   @keyframes rec-pulse {
     0%,
     100% {
@@ -144,6 +155,46 @@
 
   .alert-bad {
     @apply rounded-tile bg-bad-soft px-4 py-3 font-semibold text-bad;
+  }
+
+  /* Sound waves rippling out of a round button while it records or plays (gone with reduced motion). */
+  .wave {
+    @apply relative;
+  }
+
+  .wave::before,
+  .wave::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: inherit;
+    border: 3px solid var(--wave-color, var(--color-rec));
+    pointer-events: none;
+    animation: wave 1.8s ease-out infinite;
+  }
+
+  .wave::after {
+    animation-delay: 0.9s;
+  }
+
+  /* AudioPlayer's seek bar: a thick rounded track filled up to --progress, with a chunky thumb. */
+  .player-range {
+    @apply h-3 cursor-pointer appearance-none rounded-full bg-track;
+    background-image: linear-gradient(var(--color-ink), var(--color-ink));
+    background-size: var(--progress, 0%) 100%;
+    background-repeat: no-repeat;
+  }
+
+  .player-range:disabled {
+    @apply cursor-default;
+  }
+
+  .player-range::-webkit-slider-thumb {
+    @apply size-6 appearance-none rounded-full border-3 border-ink bg-card;
+  }
+
+  .player-range::-moz-range-thumb {
+    @apply size-5 rounded-full border-3 border-ink bg-card;
   }
 
   .field-input {

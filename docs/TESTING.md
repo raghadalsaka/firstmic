@@ -30,11 +30,11 @@ cd e2e
 npm install
 npx playwright install chromium webkit
 node make-media.mjs     # makes test tones with the container's ffmpeg
-node api-smoke.mjs      # 18 API steps
-node solo-e2e.mjs       # 12 browser steps, screenshots in e2e/out/
+node api-smoke.mjs      # 20 API steps
+node solo-e2e.mjs       # 14 browser steps, screenshots in e2e/out/
 node webkit-layout.mjs  # Safari-engine layout of the home page and student screens
-node group-smoke.mjs    # 14 API steps for two-person podcasts, with two live-call connections
-node group-e2e.mjs      # 9 browser steps: two browsers, each with its own fake microphone
+node group-smoke.mjs    # 16 API steps for two-person podcasts, with two live-call connections
+node group-e2e.mjs      # 11 browser steps: two browsers, each with its own fake microphone
 
 docker rm -f firstmic-e2e
 ```
@@ -57,8 +57,11 @@ name as the third argument if it isn't `firstmic-e2e`.
 - class and topic management, topic ordering and hiding
 - the class link (and the 404 after a new link is made)
 - episode creation
-- a send becoming version 1, then a replacement becoming version 2
-- **a failed replacement leaving version 2 current and playable**
+- a send becoming version 1, then a replacement becoming version 2; version 1 stays in the history without audio
+- feedback: the teacher writes and edits a comment on the current version only; the student sees it
+- **a failed replacement leaving version 2 current and playable, with its feedback**
+- a replacement of the commented version 2: it keeps its audio and comment, the student plays it under Past Feedback,
+  and its comment can no longer change
 - a newer take refusing late uploads to an unfinished one
 - a new PIN signing the student out on every device, upload tokens included, while their recordings stay
 - that a student token can't reach teacher routes or another student's episode
@@ -74,7 +77,10 @@ name as the third argument if it isn't `firstmic-e2e`.
 6. The teacher sees version 1, plays it and downloads it.
 7. The 10-second auto-stop fires, and the teacher still has version 1 until the replacement is sent.
 8. Version 2 replaces version 1.
-9. The student screens fit iPhone 13 and Pixel 7 sizes without sideways scrolling.
+9. The teacher saves a comment on version 2 and the student sees it.
+10. The student sends version 3. The teacher's history keeps version 2 with its audio and comment, version 1 without
+    audio, and the student plays version 2 under **Past Feedback**.
+11. The student screens fit iPhone 13 and Pixel 7 sizes without sideways scrolling.
 
 To check that the sent audio holds the tone:
 
@@ -93,7 +99,10 @@ docker exec firstmic-e2e ffmpeg -nostats -i /tmp/v2.mp3 -af "bandpass=f=440:widt
 - Record needs both students in the call; only the student who tapped Record can Stop, Send or Try Again, unless they
   leave the call
 - the mix has both voices (440 Hz and 660 Hz test tones), and each voice file has only its own tone
-- a take whose voice can't be processed fails, and the sent version stays playable; a new Send replaces it
+- a take whose voice can't be processed fails, and the sent version stays playable; a new Send replaces it, and the
+  replaced version keeps no files
+- feedback on the current take reaches both partners at once; replacing that take keeps its mix and both voices for
+  the teacher, and both partners can play its mix (only) under Past Feedback
 - the server stops a take at the time limit
 - a new PIN closes the student's live call; removing a student deletes their group and its files
 
@@ -110,6 +119,9 @@ docker exec firstmic-e2e ffmpeg -nostats -i /tmp/v2.mp3 -af "bandpass=f=440:widt
 7. Sara records and sends; both phones show **Sent!**
 8. The teacher plays the mix and downloads the mix and both voices; the tones are checked with ffmpeg.
 9. A take stops at the 10-second limit, and sending it makes version 2.
+10. The teacher comments on version 2, and both phones show it without reloading.
+11. Ali records and sends version 3. Both phones list version 2 under **Past Feedback**, Sara plays it, and the
+    teacher's history keeps its mix and both voices.
 
 Chrome's noise suppression treats a steady test tone as noise and can turn it down by about 20 dB. That's why the
 test only checks that each tone is well above silence.
@@ -149,7 +161,12 @@ Android Chrome and real networks. Use the deployed HTTPS site. The microphone do
     - **Expected:** the recording is replaced, shows 3:00 and "sent 2 times", and plays the new take.
 13. Close the browser tab, reopen the class link and pick the same topic.
     - **Expected:** **Sent!** with **Try Again**, so the name and episode were remembered.
-14. Tap **Change topic**, then **Not you?**. **Expected:** the name question again.
+14. On the laptop, type a comment on the recording and click **Save Feedback**. On the phone, reopen the topic.
+    - **Expected:** **Teacher Feedback** shows the comment.
+15. Tap **Try Again**, record and **Send**, then reload the laptop.
+    - **Expected:** the phone lists the comment under **Past Feedback** and **Listen** plays the older recording.
+    - The laptop's **Earlier versions** shows that version with its comment and audio.
+16. Tap **Change topic**, then **Not you?**. **Expected:** the name question again.
 
 **Other cases worth a minute each:**
 
@@ -183,6 +200,10 @@ Wi-Fi and one on mobile data. Wear headphones.
 9. Record once more and let it run to 3:00. **Expected:** it stops on its own on both phones.
 10. Close the tab on phone A while phone B is listening to a take.
     - **Expected:** phone B gets Send and Try Again, because control passes to the student who is still there.
+11. On the laptop, save a comment on the group's recording.
+    - **Expected:** both phones show **Teacher Feedback** without reloading.
+12. Record and send a new take. On phone B, tap **Listen** under **Past Feedback** while connected to phone A.
+    - **Expected:** the old mix plays, and phone A does not hear it through phone B's microphone.
 
 If the call never connects ("Connecting you to …" doesn't go away) on some network, that network needs a TURN relay.
 See `ICE_SERVERS` in `.env.example`.

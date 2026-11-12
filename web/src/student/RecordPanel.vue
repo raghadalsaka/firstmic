@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import AudioPlayer from '../components/AudioPlayer.vue'
 import { SUGGESTED_MIN_SECONDS } from '../config'
 import { formatClock } from '../utils/format'
+import FeedbackPanel from './FeedbackPanel.vue'
 import { useRecorder } from './useRecorder'
 
 const props = defineProps<{
@@ -14,7 +16,21 @@ const props = defineProps<{
 
 const emit = defineEmits<{ changeTopic: []; signedOut: [] }>()
 
-const { phase, elapsedMs, maxMs, sendPercent, hasSent, audioUrl, record, stop, tryAgain, send } = useRecorder({
+const {
+  phase,
+  elapsedMs,
+  maxMs,
+  sendPercent,
+  hasSent,
+  feedback,
+  pastFeedback,
+  audioUrl,
+  record,
+  stop,
+  tryAgain,
+  send,
+  loadPastAudio,
+} = useRecorder({
   classToken: props.classToken,
   topicId: props.topicId,
   studentToken: props.studentToken,
@@ -70,10 +86,10 @@ const hitLimit = computed(() => elapsedMs.value >= maxMs - 250)
         <span class="size-3 animate-rec-pulse rounded-full bg-rec" aria-hidden="true"></span>
         Recording
       </p>
-      <button class="btn btn-primary btn-mic" @click="stop">Stop</button>
+      <button class="btn btn-primary btn-mic wave" @click="stop">Stop</button>
     </template>
 
-    <audio v-if="showPlayer" :src="audioUrl ?? undefined" controls preload="metadata" class="w-full max-w-sm"></audio>
+    <AudioPlayer v-if="showPlayer && audioUrl" :src="audioUrl" :duration-ms="elapsedMs" class="max-w-sm" />
 
     <template v-if="phase === 'recorded' || phase === 'send-failed'">
       <p v-if="phase === 'send-failed'" class="alert-bad max-w-sm" role="alert">
@@ -109,5 +125,7 @@ const hitLimit = computed(() => elapsedMs.value >= maxMs - 250)
     >
       Change topic
     </button>
+
+    <FeedbackPanel v-if="!isBusy" :current="feedback" :past="pastFeedback" :load-audio="loadPastAudio" />
   </section>
 </template>

@@ -1,9 +1,13 @@
 name: CI
 
+# On a push to main the deploy workflow runs this first, then builds and publishes the image.
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   check:
@@ -20,4 +24,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm build
-      - run: docker build -t firstmic:ci .
+      # On a push the deploy workflow builds and publishes the same commit right after this job.
+      - if: ${{ github.event_name != 'push' }}
+        run: docker build -t firstmic:ci .

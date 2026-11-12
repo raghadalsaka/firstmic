@@ -17,6 +17,9 @@ export const SUBMISSION_POLL_MS = 1500
 /** How long Send waits for upload plus processing before telling the student it didn't work. */
 export const SEND_DEADLINE_MS = 5 * 60 * 1000
 
+/** Matches FEEDBACK_MAX_CHARS in server/src/lib/feedback.ts. */
+export const MAX_FEEDBACK_LENGTH: number = 2000
+
 // Roster limits match QuestRush and the server (server/src/lib/roster.ts).
 export const MAX_NAME_LENGTH: number = 60
 export const MAX_EMOJI_LENGTH: number = 16

@@ -9,6 +9,12 @@ services:
       VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID}
       FIRSTMIC_MAX_SECONDS: ${FIRSTMIC_MAX_SECONDS:-180}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Optional; empty means the server's default (see .env.example).
+      FIRSTMIC_GROUP_UPLOAD_MINUTES: ${FIRSTMIC_GROUP_UPLOAD_MINUTES:-}
+      ICE_SERVERS: ${ICE_SERVERS:-}
+      PIN_MAX_ATTEMPTS: ${PIN_MAX_ATTEMPTS:-}
+      PIN_LOCK_MINUTES: ${PIN_LOCK_MINUTES:-}
+      PIN_ATTEMPTS_PER_MINUTE_PER_IP: ${PIN_ATTEMPTS_PER_MINUTE_PER_IP:-}
     volumes:
       - firstmic-data:/data
     expose:

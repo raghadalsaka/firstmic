@@ -1,0 +1,60 @@
+# Production stack for one 512 MB droplet, behind a Cloudflare Tunnel (no published ports). Copied to
+# /opt/firstmic/compose.yml by the deploy workflow.
+#
+#   /opt/firstmic/.env         settings and the tunnel token (server-side only, never in git)
+#   /opt/firstmic/images.env   FIRSTMIC_IMAGE_TAG / FIRSTMIC_PREVIOUS_TAG written by the deploy script
+#
+# Every compose command must pass both files:
+#   docker compose --env-file .env --env-file images.env -f compose.yml ...
+name: firstmic
+
+x-service: &service
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  # Node server, built web app and ffmpeg. Health check comes from the image's HEALTHCHECK (GET /api/health).
+  firstmic:
+    <<: *service
+    image: ghcr.io/raghadalsaka/firstmic:${FIRSTMIC_IMAGE_TAG:?set in images.env}
+    stop_grace_period: 30s
+    environment:
+      VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:?set in .env}
+      FIRSTMIC_MAX_SECONDS: ${FIRSTMIC_MAX_SECONDS:-180}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Optional; empty means the server's default (see .env.production.example).
+      FIRSTMIC_GROUP_UPLOAD_MINUTES: ${FIRSTMIC_GROUP_UPLOAD_MINUTES:-}
+      ICE_SERVERS: ${ICE_SERVERS:-}
+      PIN_MAX_ATTEMPTS: ${PIN_MAX_ATTEMPTS:-}
+      PIN_LOCK_MINUTES: ${PIN_LOCK_MINUTES:-}
+      PIN_ATTEMPTS_PER_MINUTE_PER_IP: ${PIN_ATTEMPTS_PER_MINUTE_PER_IP:-}
+    volumes:
+      - data:/data
+    deploy:
+      resources:
+        limits:
+          # The server plus the ffmpeg it runs to encode and mix recordings.
+          memory: 320M
+
+  # Cloudflare Tunnel: outbound-only connector. The public hostname is configured in Cloudflare Zero Trust and
+  # points at http://firstmic:4100. The metrics endpoint stays inside the compose network; the deploy script polls
+  # its /ready.
+  cloudflared:
+    <<: *service
+    image: cloudflare/cloudflared:2026.9.1
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN is required}
+    environment:
+      TUNNEL_METRICS: 0.0.0.0:2000
+    deploy:
+      resources:
+        limits:
+          memory: 96M
+
+volumes:
+  # SQLite database and recordings.
+  data:
+    name: firstmic_data

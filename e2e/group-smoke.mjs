@@ -297,7 +297,46 @@ const replaced = (await json(`/api/teacher/classes/${classId}`)).data.groupRecor
 assert.equal(replaced.length, 1)
 assert.equal(replaced[0].version, 2)
 assert.equal((await call(`/api/teacher/group-takes/${rec.id}/audio`)).status, 404, 'version 1 is gone')
-step('either student can start a take; sending a new take replaces version 1 with version 2')
+assert.deepEqual(
+  replaced[0].history.map(({ version, feedback, has_audio, voices }) => ({ version, feedback, has_audio, voices: voices.length })),
+  [{ version: 1, feedback: null, has_audio: 0, voices: 0 }],
+)
+step('either student can start a take; sending a new take without feedback replaces version 1, which keeps no audio')
+
+const feedbackOn = (id, text) => json(`/api/teacher/group-takes/${id}/feedback`, { method: 'PUT', body: { text } })
+assert.equal((await feedbackOn(rec.id, 'Too late')).status, 409)
+assert.equal((await json(`/api/teacher/group-takes/${take4}/feedback`, { method: 'PUT', body: { text: 'Hi' }, token: sara })).status, 401)
+assert.equal((await feedbackOn(take4, 'Lovely teamwork.')).status, 200)
+await until(() => aliConn2.group?.sent?.feedback === 'Lovely teamwork.', 'Ali is pushed the feedback')
+assert.equal((await group(sara)).sent.feedback, 'Lovely teamwork.')
+step('the teacher comments on the current group take; both partners see it right away')
+
+const take5 = await recordTake(ali, ali, [[ali, tone440, 0], [sara, tone660, 0]])
+await waitForStatus(ali, take5, 'listening')
+assert.equal((await json(`/api/group/takes/${take5}/send`, { token: ali, body: {} })).data.version, 3)
+const kept = (await json(`/api/teacher/classes/${classId}`)).data.groupRecordings[0]
+assert.equal(kept.id, take5)
+assert.equal(kept.feedback, null)
+assert.deepEqual(
+  kept.history.map(({ version, feedback, has_audio, voices }) => ({ version, feedback, has_audio, voices: voices.map((v) => v.name) })),
+  [
+    { version: 2, feedback: 'Lovely teamwork.', has_audio: 1, voices: ['Ali', 'Sara'] },
+    { version: 1, feedback: null, has_audio: 0, voices: [] },
+  ],
+)
+assert.equal((await call(`/api/teacher/group-takes/${take4}/audio`)).status, 200, 'the commented mix stays')
+for (const voice of kept.history[0].voices) {
+  assert.equal((await call(`/api/teacher/group-takes/${take4}/audio?voice=${voice.track_id}`)).status, 200, `${voice.name}'s voice stays`)
+}
+assert.equal((await feedbackOn(take4, 'Changed')).status, 409)
+for (const token of [ali, sara]) {
+  const g = await group(token)
+  assert.equal(g.sent.feedback, null)
+  assert.deepEqual(g.pastFeedback.map((p) => [p.id, p.version, p.feedback]), [[take4, 2, 'Lovely teamwork.']])
+  assert.equal((await call(`/api/group/takes/${take4}/mix`, { token })).status, 200, 'both partners play the commented mix')
+}
+assert.equal((await call(`/api/group/takes/${rec.id}/mix`, { token: ali })).status, 404)
+step('a new take replaces a commented one: its mix and both voices stay for the teacher; both partners play the mix under Past Feedback')
 
 // ---- The 3-minute limit (10 s here) is enforced by the server ----
 const limited = await json('/api/group/takes', { token: ali, body: {} })
@@ -316,7 +355,7 @@ assert.equal((await json('/api/group', { token: sara })).status, 401)
 const saraLogin2 = await signIn(classToken, { ...byName.Sara, pin: newPin })
 const saraBack = await json(`/api/class/${classToken}/groups`, { token: saraLogin2, body: { topicId: topic.id } })
 assert.equal(saraBack.data.groupId, aliGroup.data.groupId)
-assert.equal((await group(saraBack.data.token)).sent.version, 2)
+assert.equal((await group(saraBack.data.token)).sent.version, 3)
 step('a new PIN closes the student\'s live call and replaces their group token; signing in again returns the same group')
 
 assert.equal((await json(`/api/teacher/students/${byName.Sara.id}`, { method: 'DELETE' })).status, 200)
