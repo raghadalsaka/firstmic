@@ -21,9 +21,7 @@ import {
 import { createRateLimiter } from "../lib/rate-limit.js";
 import { pinMatches } from "../lib/roster.js";
 import { classStudents } from "../lib/roster.js";
-import { submissionAudioPath, trackChunksDir } from "../lib/storage.js";
-import { streamFile } from "../lib/http-file.js";
-import { pastFeedback } from "../lib/feedback.js";
+import { trackChunksDir } from "../lib/storage.js";
 import { removeTrackMedia } from "../jobs/submissions.js";
 
 const DURATION_SLACK_SECONDS = 30;
@@ -264,26 +262,16 @@ export function registerStudentRoutes(app: FastifyInstance): void {
     }
     const current = student.session.current_submission_id
       ? (db
-          .prepare("SELECT id, version, duration_ms, ready_at, feedback FROM submissions WHERE id = ?")
-          .get(student.session.current_submission_id) as Pick<
-          SubmissionRow,
-          "id" | "version" | "duration_ms" | "ready_at" | "feedback"
-        >)
+          .prepare("SELECT id, version, duration_ms, ready_at FROM submissions WHERE id = ?")
+          .get(student.session.current_submission_id) as Pick<SubmissionRow, "id" | "version" | "duration_ms" | "ready_at">)
       : null;
     return {
       episode: {
         id: student.session.id,
         studentName: student.participant.name,
         current: current
-          ? {
-              id: current.id,
-              version: current.version,
-              durationMs: current.duration_ms,
-              sentAt: current.ready_at,
-              feedback: current.feedback,
-            }
+          ? { id: current.id, version: current.version, durationMs: current.duration_ms, sentAt: current.ready_at }
           : null,
-        pastFeedback: pastFeedback("submission", student.session.id),
       },
     };
   });
@@ -319,23 +307,5 @@ export function registerStudentRoutes(app: FastifyInstance): void {
       return reply.code(404).send({ error: "Submission not found" });
     }
     return { status: submission.status, version: submission.version };
-  });
-
-  // An earlier version the teacher commented on, so the student can hear what the feedback is about.
-  app.get("/api/student/submissions/:submissionId/audio", async (req, reply) => {
-    const student = requireEpisodeStudent(req, reply);
-    if (!student) {
-      return;
-    }
-    const { submissionId } = req.params as { submissionId: string };
-    const submission = db
-      .prepare(
-        "SELECT id, version FROM submissions WHERE id = ? AND session_id = ? AND status = 'replaced' AND feedback IS NOT NULL"
-      )
-      .get(submissionId, student.session.id) as Pick<SubmissionRow, "id" | "version"> | undefined;
-    if (!submission) {
-      return reply.code(404).send({ error: "Recording not found" });
-    }
-    return streamFile(req, reply, submissionAudioPath(submission.id), `v${submission.version}.mp3`, "audio/mpeg", true);
   });
 }

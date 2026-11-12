@@ -1,5 +1,5 @@
 import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
-import { api, ApiError, errorMessage, fetchAudio } from '../services/api'
+import { api, ApiError, errorMessage } from '../services/api'
 import { chunkStore } from '../recorder/chunk-store'
 import { discardTake, loadStoredTake, pickAudioMimeType, TakeRecorder, type FinishedTake } from '../recorder/local-take'
 import { isRejection, uploadChunks, wait } from '../recorder/upload-manager'
@@ -215,10 +215,6 @@ export function useGroupRoom(options: {
     await chunkStore.deleteTrack(pending.localId).catch(() => undefined)
   }
 
-  function fetchMix(takeId: string): Promise<Blob> {
-    return fetchAudio(`/api/group/takes/${takeId}/mix`, options.token)
-  }
-
   async function loadMix(takeId: string | null): Promise<void> {
     mixTakeId = takeId
     if (mixUrl.value) {
@@ -229,7 +225,11 @@ export function useGroupRoom(options: {
       return
     }
     try {
-      const blob = await fetchMix(takeId)
+      const res = await fetch(`/api/group/takes/${takeId}/mix`, { headers: { Authorization: `Bearer ${options.token}` } })
+      if (!res.ok) {
+        throw new Error(`The mix did not load (${res.status})`)
+      }
+      const blob = await res.blob()
       if (mixTakeId === takeId && !unmounted) {
         mixUrl.value = URL.createObjectURL(blob)
       }
@@ -384,6 +384,5 @@ export function useGroupRoom(options: {
     stop: () => act(takePath('stop')),
     send: () => act(takePath('send')),
     tryAgain,
-    loadPastMix: fetchMix,
   }
 }

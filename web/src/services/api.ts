@@ -43,15 +43,6 @@ export async function api<T>(
   return data as T
 }
 
-/** An audio file a student may play; the Authorization header is why an <audio src> can't load it directly. */
-export async function fetchAudio(path: string, token: string): Promise<Blob> {
-  const res = await fetch(path, { headers: { Authorization: `Bearer ${token}` } })
-  if (!res.ok) {
-    throw new ApiError(res.status, `The recording did not load (${res.status})`)
-  }
-  return res.blob()
-}
-
 /** The server's message for an API error, or the fallback for anything else (offline, aborted, a bug). */
 export function errorMessage(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message : fallback

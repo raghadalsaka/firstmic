@@ -1,6 +1,5 @@
 import { onMounted, onUnmounted, ref } from 'vue'
-import { api, ApiError, fetchAudio } from '../services/api'
-import type { PastFeedback } from '../types/feedback'
+import { api, ApiError } from '../services/api'
 import { discardTake, loadStoredTake, pickAudioMimeType, TakeRecorder, type FinishedTake } from '../recorder/local-take'
 import { MIC_CONSTRAINTS, requestWakeLock, type WakeLock } from '../recorder/device'
 import { EpisodeGoneError, sendTake } from '../recorder/send'
@@ -19,7 +18,7 @@ export type RecorderPhase =
   | 'unsupported'
 
 type EpisodeResponse = {
-  episode: { current: { id: string; feedback: string | null } | null; pastFeedback: PastFeedback[] }
+  episode: { current: { id: string } | null }
 }
 
 const TICK_MS = 200
@@ -36,8 +35,6 @@ export function useRecorder(options: {
   const elapsedMs = ref(0)
   const sendPercent = ref(0)
   const hasSent = ref(false)
-  const feedback = ref<string | null>(null)
-  const pastFeedback = ref<PastFeedback[]>([])
   // Not reactive: nothing renders the take itself, only audioUrl and elapsedMs.
   let take: FinishedTake | null = null
   const audioUrl = ref<string | null>(null)
@@ -68,14 +65,11 @@ export function useRecorder(options: {
     wakeLock = null
   }
 
-  // The episode is the student's on every device, so this also shows a recording sent from another one, and the
-  // teacher's feedback. Resolves to whether anything was sent.
-  async function loadEpisodeStatus(): Promise<boolean> {
+  // The episode is the student's on every device, so this also shows a recording sent from another one.
+  async function loadHasSent(): Promise<boolean> {
     try {
       const episode = await ensureEpisode()
       const response = await api<EpisodeResponse>('/api/student/episode', { token: episode.token })
-      feedback.value = response.episode.current?.feedback ?? null
-      pastFeedback.value = response.episode.pastFeedback
       return response.episode.current !== null
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -95,7 +89,7 @@ export function useRecorder(options: {
       phase.value = 'unsupported'
       return
     }
-    const [sent, pending] = await Promise.all([loadEpisodeStatus(), loadPending()])
+    const [sent, pending] = await Promise.all([loadHasSent(), loadPending()])
     hasSent.value = sent
     if (pending) {
       setTake(pending)
@@ -209,8 +203,6 @@ export function useRecorder(options: {
         return attempt()
       })
       hasSent.value = true
-      // The new recording has no feedback yet; the replaced one's moves to Past Feedback if it had any.
-      void loadEpisodeStatus()
       await discardTake(current).catch(() => undefined)
       savePendingTake(options.classToken, options.topicId, null)
       phase.value = 'sent'
@@ -239,23 +231,5 @@ export function useRecorder(options: {
     }
   })
 
-  async function loadPastAudio(submissionId: string): Promise<Blob> {
-    return fetchAudio(`/api/student/submissions/${submissionId}/audio`, (await ensureEpisode()).token)
-  }
-
-  return {
-    phase,
-    elapsedMs,
-    maxMs,
-    sendPercent,
-    hasSent,
-    feedback,
-    pastFeedback,
-    audioUrl,
-    record,
-    stop,
-    tryAgain,
-    send,
-    loadPastAudio,
-  }
+  return { phase, elapsedMs, maxMs, sendPercent, hasSent, audioUrl, record, stop, tryAgain, send }
 }

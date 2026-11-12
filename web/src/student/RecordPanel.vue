@@ -3,7 +3,6 @@ import { computed } from 'vue'
 import AudioPlayer from '../components/AudioPlayer.vue'
 import { SUGGESTED_MIN_SECONDS } from '../config'
 import { formatClock } from '../utils/format'
-import FeedbackPanel from './FeedbackPanel.vue'
 import { useRecorder } from './useRecorder'
 
 const props = defineProps<{
@@ -16,21 +15,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ changeTopic: []; signedOut: [] }>()
 
-const {
-  phase,
-  elapsedMs,
-  maxMs,
-  sendPercent,
-  hasSent,
-  feedback,
-  pastFeedback,
-  audioUrl,
-  record,
-  stop,
-  tryAgain,
-  send,
-  loadPastAudio,
-} = useRecorder({
+const { phase, elapsedMs, maxMs, sendPercent, hasSent, audioUrl, record, stop, tryAgain, send } = useRecorder({
   classToken: props.classToken,
   topicId: props.topicId,
   studentToken: props.studentToken,
@@ -125,7 +110,5 @@ const hitLimit = computed(() => elapsedMs.value >= maxMs - 250)
     >
       Change topic
     </button>
-
-    <FeedbackPanel v-if="!isBusy" :current="feedback" :past="pastFeedback" :load-audio="loadPastAudio" />
   </section>
 </template>

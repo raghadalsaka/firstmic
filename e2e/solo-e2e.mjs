@@ -208,55 +208,6 @@ fs.writeFileSync(path.join(outDir, 'v2.mp3'), await v2.body())
 await shot(teacher, 'teacher-class-v2')
 ok('replacement becomes v2; v1 is gone')
 
-// ---- Feedback: the teacher comments on v2, the student replaces it, and v2 stays under Past Feedback ----
-const comment = 'Great facts about foxes! Next time, slow down a little.'
-await rows.first().getByTestId('feedback-input').fill(comment)
-await rows.first().getByRole('button', { name: 'Save Feedback' }).click()
-await rows.first().getByText('Feedback saved. Students can see it.').waitFor()
-await student.reload()
-await student.getByRole('button', { name: 'My favourite animal' }).click()
-await student.getByRole('button', { name: 'On My Own' }).click()
-await student.getByTestId('current-feedback').getByText(comment).waitFor()
-await shot(student, 'student-9-feedback')
-ok('the teacher saves a comment on v2 and the student sees it')
-
-await student.getByRole('button', { name: 'Try Again' }).click()
-await student.getByRole('button', { name: 'Record' }).click()
-await student.waitForTimeout(2500)
-await student.getByRole('button', { name: 'Stop' }).click()
-await student.getByRole('button', { name: 'Send' }).click()
-await student.getByText('Sent!').waitFor({ timeout: 60_000 })
-const past = student.getByTestId('past-feedback')
-await past.getByText(comment).waitFor()
-assert.equal(await student.getByTestId('current-feedback').count(), 0, 'the new version has no comment yet')
-await past.getByRole('button', { name: 'Listen' }).click()
-await past.locator('audio').waitFor({ state: 'attached' })
-const pastPlayed = await student.evaluate(async () => {
-  const audio = document.querySelector('[data-testid="past-feedback"] audio')
-  await audio.play()
-  await new Promise((r) => setTimeout(r, 1000))
-  const t = audio.currentTime
-  audio.pause()
-  return t
-})
-assert.ok(pastPlayed > 0.5, `past recording playback did not advance (${pastPlayed})`)
-await shot(student, 'student-10-past-feedback')
-
-await teacher.reload()
-await rows.first().waitFor()
-assert.match(await rows.first().innerText(), /sent 3 times/)
-assert.equal(await rows.first().getByTestId('feedback-input').inputValue(), '')
-const history = rows.first().getByTestId('version-history')
-await history.locator('summary').click()
-const versions = history.getByTestId('past-version')
-assert.equal(await versions.count(), 2)
-assert.match(await versions.nth(0).innerText(), /Version 2[\s\S]*slow down a little/)
-assert.equal(await versions.nth(0).locator('audio').count(), 1)
-assert.equal((await teacherCtx.request.get(`${base}${v2Src}`)).status(), 200)
-assert.match(await versions.nth(1).innerText(), /Version 1[\s\S]*No feedback, so the audio was deleted/)
-await shot(teacher, 'teacher-class-history')
-ok(`a new Send replaces commented v2: it keeps its audio and comment in the teacher's history; the student plays it under Past Feedback (${pastPlayed.toFixed(2)}s)`)
-
 // ---- Layout: no horizontal scroll on phones ----
 for (const [label, device] of [['iphone13', devices['iPhone 13']], ['pixel7', devices['Pixel 7']]]) {
   const { defaultBrowserType: _ignored, ...chromiumDevice } = device

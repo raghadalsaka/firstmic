@@ -223,22 +223,17 @@ const sendTransaction = db.transaction((take: GroupTakeRow): { version: number; 
   return { version, replaced };
 });
 
-/**
- * Send: hands the mix and both voices to the teacher together, replacing the group's previous sent take. The replaced
- * take was read inside the send transaction, so its feedback decides whether its three files stay.
- */
+/** Send: hands the mix and both voices to the teacher together, replacing the group's previous sent take. */
 export function sendTake(take: GroupTakeRow): { version: number } | null {
   const result = sendTransaction(take);
   if (!result) {
     return null;
   }
-  const { replaced } = result;
-  if (replaced && replaced.feedback === null) {
-    removeRecordingFiles([replaced.id], takeTrackIds(replaced));
+  if (result.replaced) {
+    removeRecordingFiles([result.replaced.id], takeTrackIds(result.replaced));
   }
   console.log(
-    `[groups] take ${take.id} sent as version ${result.version}` +
-      (replaced ? ` (replaced ${replaced.id}, ${replaced.feedback === null ? "files deleted" : "kept with its feedback"})` : "")
+    `[groups] take ${take.id} sent as version ${result.version}` + (result.replaced ? ` (replaced ${result.replaced.id})` : "")
   );
   broadcastGroup(take.session_id);
   return { version: result.version };

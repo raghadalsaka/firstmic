@@ -6,9 +6,7 @@ import { api, ApiError, errorMessage } from '../services/api'
 import type { RosterStudent } from '../types/roster'
 import { formatClock, formatDateTime } from '../utils/format'
 import { classPath } from '../utils/slug'
-import FeedbackForm from './FeedbackForm.vue'
 import StudentsPanel from './StudentsPanel.vue'
-import VersionHistory, { type PastVersion } from './VersionHistory.vue'
 
 type Topic = { id: string; title: string; active: number; sort: number }
 type Submission = {
@@ -17,8 +15,6 @@ type Submission = {
   version: number
   duration_ms: number | null
   ready_at: number
-  feedback: string | null
-  history: PastVersion[]
   student_name: string
   student_id: string | null
   topic_id: string | null
@@ -30,11 +26,9 @@ type GroupRecording = {
   version: number
   duration_ms: number | null
   sent_at: number
-  feedback: string | null
   topic_id: string | null
   topic_title: string | null
   voices: { track_id: string; student_id: string | null; name: string }[]
-  history: PastVersion[]
 }
 type ClassDetail = {
   class: { id: string; name: string; classToken: string }
@@ -78,9 +72,6 @@ const visibleGroupRecordings = computed(() => {
       voices: item.voices.map((voice) => ({ ...voice, student: voice.student_id ? students.get(voice.student_id) : undefined })),
     }))
 })
-
-const submissionAudio = (id: string): string => `/api/teacher/submissions/${id}/audio`
-const groupTakeAudio = (id: string): string => `/api/teacher/group-takes/${id}/audio`
 
 async function load(): Promise<void> {
   try {
@@ -299,8 +290,6 @@ function deleteEpisode(episodeId: string, question: string): void {
               </a>
               <button class="btn btn-small" @click="deleteEpisode(item.episode_id, `Delete the podcast by ${item.names}? Their group is removed too.`)">Delete</button>
             </div>
-            <FeedbackForm :save-url="`/api/teacher/group-takes/${item.id}/feedback`" :initial="item.feedback" @saved="load" />
-            <VersionHistory :versions="item.history" :audio-path="groupTakeAudio" />
           </li>
         </ul>
         <ul class="flex flex-col gap-4">
@@ -327,8 +316,6 @@ function deleteEpisode(episodeId: string, question: string): void {
               <a class="btn btn-small" :href="`/api/teacher/submissions/${item.id}/audio?download=1`">Download</a>
               <button class="btn btn-small" @click="deleteEpisode(item.episode_id, `Delete ${item.student_name}'s recording?`)">Delete</button>
             </div>
-            <FeedbackForm :save-url="`/api/teacher/submissions/${item.id}/feedback`" :initial="item.feedback" @saved="load" />
-            <VersionHistory :versions="item.history" :audio-path="submissionAudio" />
           </li>
         </ul>
       </section>

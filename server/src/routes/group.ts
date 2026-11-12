@@ -156,8 +156,7 @@ export async function registerGroupRoutes(app: FastifyInstance): Promise<void> {
     return { trackId: result.trackId };
   });
 
-  // Students only ever hear the mix, never their partner's separate voice: the take they're deciding on, the sent one,
-  // or an earlier one the teacher commented on.
+  // Students only ever hear the mix, never their partner's separate voice.
   app.get("/api/group/takes/:takeId/mix", async (req, reply) => {
     const found = requireMemberTake(req, reply, false);
     if (!found) {
@@ -165,8 +164,7 @@ export async function registerGroupRoutes(app: FastifyInstance): Promise<void> {
     }
     const { member, take } = found;
     const isCurrent = take.status === "sent" && member.session.current_take_id === take.id;
-    const hasFeedback = take.status === "replaced" && take.feedback !== null;
-    if (take.status !== "listening" && !isCurrent && !hasFeedback) {
+    if (take.status !== "listening" && !isCurrent) {
       return reply.code(404).send({ error: "This mix isn't available" });
     }
     return streamFile(req, reply, groupMixPath(take.id), "mix.mp3", "audio/mpeg", true);

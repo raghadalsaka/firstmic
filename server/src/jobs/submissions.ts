@@ -93,21 +93,16 @@ export function failSubmission(submissionId: string, reason: string): void {
   }
 }
 
-type ReplacedSubmission = Pick<SubmissionRow, "id" | "feedback">;
-
 /**
  * Makes a finished submission the episode's current one. Starting a newer take fails the
  * older "sending" ones, so a submission that is no longer sending is simply not promoted.
- * The replaced one's feedback is read here, so a comment saved before this commits keeps its audio.
  */
-const promoteSubmission = db.transaction((submission: SubmissionRow, durationMs: number | null): ReplacedSubmission | null => {
-  const current = db
-    .prepare(
-      `SELECT sub.id, sub.feedback FROM sessions s
-       INNER JOIN submissions sub ON sub.id = s.current_submission_id
-       WHERE s.id = ?`
-    )
-    .get(submission.session_id) as ReplacedSubmission | undefined;
+const promoteSubmission = db.transaction((submission: SubmissionRow, durationMs: number | null): string | null => {
+  const currentId = (
+    db.prepare("SELECT current_submission_id AS id FROM sessions WHERE id = ?").get(submission.session_id) as
+      | { id: string | null }
+      | undefined
+  )?.id ?? null;
   const nextVersion = (
     db
       .prepare("SELECT COALESCE(MAX(version), 0) + 1 AS v FROM submissions WHERE session_id = ?")
@@ -122,11 +117,11 @@ const promoteSubmission = db.transaction((submission: SubmissionRow, durationMs:
   if (updated.changes === 0) {
     throw new Error("Superseded before it finished");
   }
-  if (current) {
-    db.prepare("UPDATE submissions SET status = 'replaced' WHERE id = ?").run(current.id);
+  if (currentId) {
+    db.prepare("UPDATE submissions SET status = 'replaced' WHERE id = ?").run(currentId);
   }
   db.prepare("UPDATE sessions SET current_submission_id = ? WHERE id = ?").run(submission.id, submission.session_id);
-  return current ?? null;
+  return currentId;
 });
 
 async function encodeSubmission(submissionId: string): Promise<void> {
@@ -141,13 +136,13 @@ async function encodeSubmission(submissionId: string): Promise<void> {
     }
     await toSubmissionMp3(wavTrackPath(submission.track_id), output, MAX_EPISODE_SECONDS);
     const meta = await probe(output);
-    const replaced = promoteSubmission(submission, meta.durationMs);
-    if (replaced && replaced.feedback === null) {
-      fs.rmSync(submissionAudioPath(replaced.id), { force: true });
+    const replacedId = promoteSubmission(submission, meta.durationMs);
+    if (replacedId) {
+      fs.rmSync(submissionAudioPath(replacedId), { force: true });
     }
     console.log(
       `[submissions] ${submissionId} is now current for episode ${submission.session_id}` +
-        (replaced ? ` (replaced ${replaced.id}, ${replaced.feedback === null ? "audio deleted" : "kept with its feedback"})` : "")
+        (replacedId ? ` (replaced ${replacedId})` : "")
     );
   } catch (err) {
     fs.rmSync(output, { force: true });

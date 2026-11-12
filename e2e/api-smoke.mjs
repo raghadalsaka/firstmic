@@ -155,58 +155,15 @@ detail = await json(`/api/teacher/classes/${classId}`)
 assert.equal(detail.data.submissions.length, 1)
 assert.equal(detail.data.submissions[0].id, v2.submissionId)
 assert.equal((await call(`/api/teacher/submissions/${v1.submissionId}/audio`)).status, 404)
-assert.deepEqual(
-  detail.data.submissions[0].history.map(({ version, feedback, has_audio }) => ({ version, feedback, has_audio })),
-  [{ version: 1, feedback: null, has_audio: 0 }],
-)
-step('replacement without feedback: v2 is current, v1 stays in the history without its audio')
-
-const feedbackOn = (id, text, token) => json(`/api/teacher/submissions/${id}/feedback`, { method: 'PUT', body: { text }, token })
-assert.equal((await feedbackOn(v1.submissionId, 'Too late for v1')).status, 409, 'a replaced version takes no feedback')
-assert.equal((await feedbackOn(v2.submissionId, 'x'.repeat(2001))).status, 400)
-assert.equal((await feedbackOn(v2.submissionId, 'Nice', tokenA)).status, 401, 'students cannot write feedback')
-assert.equal((await feedbackOn(v2.submissionId, '  Great start!  ')).status, 200)
-assert.equal((await feedbackOn(v2.submissionId, 'Great start! Speak a little slower.')).status, 200)
-detail = await json(`/api/teacher/classes/${classId}`)
-assert.equal(detail.data.submissions[0].feedback, 'Great start! Speak a little slower.')
-let mine = (await json('/api/student/episode', { token: tokenA })).data.episode
-assert.equal(mine.current.feedback, 'Great start! Speak a little slower.')
-assert.deepEqual(mine.pastFeedback, [])
-step('the teacher writes and edits one comment on the current version; the student sees it')
+step('replacement becomes v2 and v1 is no longer served')
 
 const bad = await sendTake(tokenA, Buffer.from('this is not audio at all'.repeat(50)))
 assert.equal(bad.status, 'failed')
 detail = await json(`/api/teacher/classes/${classId}`)
 assert.equal(detail.data.submissions[0].id, v2.submissionId)
 assert.equal((await call(`/api/teacher/submissions/${v2.submissionId}/audio`)).status, 200)
-mine = (await json('/api/student/episode', { token: tokenA })).data.episode
-assert.equal(mine.current.version, 2)
-assert.equal(mine.current.feedback, 'Great start! Speak a little slower.')
-step('a failed replacement leaves v2 current and playable, with its feedback')
-
-const v3 = await sendTake(tokenA, tone)
-assert.equal(v3.version, 3)
-detail = await json(`/api/teacher/classes/${classId}`)
-assert.equal(detail.data.submissions[0].id, v3.submissionId)
-assert.equal(detail.data.submissions[0].feedback, null)
-assert.deepEqual(
-  detail.data.submissions[0].history.map(({ version, feedback, has_audio }) => ({ version, feedback, has_audio })),
-  [
-    { version: 2, feedback: 'Great start! Speak a little slower.', has_audio: 1 },
-    { version: 1, feedback: null, has_audio: 0 },
-  ],
-)
-assert.equal((await call(`/api/teacher/submissions/${v2.submissionId}/audio`)).status, 200, 'v2 kept its audio')
-assert.equal((await feedbackOn(v2.submissionId, 'Changed my mind')).status, 409, 'feedback on a replaced version is frozen')
-mine = (await json('/api/student/episode', { token: tokenA })).data.episode
-assert.equal(mine.current.feedback, null)
-assert.deepEqual(mine.pastFeedback.map((p) => [p.id, p.version, p.feedback]), [[v2.submissionId, 2, 'Great start! Speak a little slower.']])
-const pastAudio = await call(`/api/student/submissions/${v2.submissionId}/audio`, { token: tokenA })
-assert.equal(pastAudio.status, 200)
-assert.equal(pastAudio.headers.get('content-type'), 'audio/mpeg')
-assert.equal((await call(`/api/student/submissions/${v1.submissionId}/audio`, { token: tokenA })).status, 404)
-assert.equal((await call(`/api/student/submissions/${v3.submissionId}/audio`, { token: tokenA })).status, 404)
-step('replacement with feedback: v2 keeps its audio and comment in the history; the student can play it under Past Feedback')
+assert.equal((await json('/api/student/episode', { token: tokenA })).data.episode.current.version, 2)
+step('a failed replacement leaves v2 current and playable')
 
 const unfinished = await json('/api/student/submissions', { token: tokenA, body: { mimeType: 'audio/webm', durationMs: 1000 } })
 await json('/api/student/submissions', { token: tokenA, body: { mimeType: 'audio/webm', durationMs: 1000 } })
@@ -220,7 +177,6 @@ const epB = await json(`/api/class/${classToken}/episodes`, { token: omarLogin.d
 const tokenB = epB.data.token
 assert.equal((await json(`/api/student/submissions/${v2.submissionId}`, { token: tokenB })).status, 404)
 assert.equal((await call(`/api/tracks/${v2.trackId}/chunks/5`, { method: 'PUT', token: tokenB, raw: tone })).status, 404)
-assert.equal((await call(`/api/student/submissions/${v2.submissionId}/audio`, { token: tokenB })).status, 404)
 step("one student cannot see or upload into another student's episode")
 
 await json(`/api/teacher/topics/${t2.data.topic.id}`, { method: 'PATCH', body: { active: false } })
@@ -236,9 +192,8 @@ step('new class link replaces the old one')
 assert.equal((await json(`/api/teacher/episodes/${ep.data.episodeId}`, { method: 'DELETE' })).status, 200)
 detail = await json(`/api/teacher/classes/${classId}`)
 assert.equal(detail.data.submissions.length, 0)
-assert.equal((await call(`/api/teacher/submissions/${v2.submissionId}/audio`)).status, 404, 'the kept version goes too')
 assert.equal((await json('/api/student/episode', { token: tokenA })).status, 401)
-step('teacher deletes a recording with its kept versions; the old student token stops working')
+step('teacher deletes a recording; the old student token stops working')
 
 const aliEpisode = await json(`/api/class/${rotated.data.classToken}/episodes`, { token: deviceA.data.studentToken, body: { topicId } })
 assert.equal((await sendTake(aliEpisode.data.token, tone)).status, 'ready')

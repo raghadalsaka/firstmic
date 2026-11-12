@@ -4,7 +4,6 @@ import AudioPlayer from '../components/AudioPlayer.vue'
 import StudentBadge from '../components/StudentBadge.vue'
 import { SUGGESTED_MIN_SECONDS } from '../config'
 import { formatClock } from '../utils/format'
-import FeedbackPanel from './FeedbackPanel.vue'
 import { useGroupRoom } from './useGroupRoom'
 
 const props = defineProps<{ classToken: string; groupId: string; token: string }>()
@@ -33,8 +32,6 @@ const showTimer = computed(() => ['recording', 'mixing', 'listening'].includes(c
 const hitLimit = computed(() => elapsedMs.value >= maxMs.value - 250)
 const isShort = computed(() => elapsedMs.value < SUGGESTED_MIN_SECONDS * 1000)
 const canLeave = computed(() => current.value !== 'recording' && uploadPercent.value === null)
-// Feedback waits while the group is busy with a take, so it never sits between them and Stop, Send or Try Again.
-const showFeedback = computed(() => ['ready', 'sent', 'partner-away'].includes(current.value ?? ''))
 const callText = computed(() => {
   if (callState.value === 'connected') {
     return `You can hear ${partnerName.value}.`
@@ -173,13 +170,5 @@ const callText = computed(() => {
     >
       Change topic
     </button>
-
-    <FeedbackPanel
-      v-if="group && showFeedback"
-      :current="group.sent?.feedback ?? null"
-      :past="group.pastFeedback"
-      :load-audio="room.loadPastMix"
-      @playing="(playing) => room.setMicLive(!playing)"
-    />
   </section>
 </template>

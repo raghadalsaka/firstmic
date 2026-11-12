@@ -9,8 +9,6 @@ import { groupMixPath, groupVoicePath, submissionAudioPath } from "../lib/storag
 import { streamFile } from "../lib/http-file.js";
 import { deleteEpisodes } from "../jobs/submissions.js";
 import { classStudents } from "../lib/roster.js";
-import { broadcastGroup } from "../lib/groups.js";
-import { FEEDBACK_MAX_CHARS, FEEDBACK_TARGETS, hasAudioSql, saveFeedback, type FeedbackKind } from "../lib/feedback.js";
 
 const classNameSchema = z.object({ name: z.string().trim().min(1).max(120) });
 const topicCreateSchema = z.object({ title: z.string().trim().min(1).max(200) });
@@ -18,8 +16,6 @@ const topicUpdateSchema = z
   .object({ title: z.string().trim().min(1).max(200).optional(), active: z.boolean().optional() })
   .refine((value) => value.title !== undefined || value.active !== undefined);
 const topicOrderSchema = z.object({ topicIds: z.array(z.string().min(1)).min(1).max(500) });
-// Empty clears the comment.
-const feedbackSchema = z.object({ text: z.string().trim().max(FEEDBACK_MAX_CHARS) });
 
 function topicForMember(topicId: string, userId: string): TopicRow | null {
   const row = db
@@ -49,7 +45,7 @@ function submissionForMember(submissionId: string, userId: string): TeacherSubmi
       `SELECT sub.id, sub.session_id AS episode_id, sub.version, sub.duration_ms, sub.ready_at,
          COALESCE(stu.name, p.name) AS student_name, t.title AS topic_title, st.name AS class_name
        FROM submissions sub
-       INNER JOIN sessions s ON s.id = sub.session_id AND ${hasAudioSql("submission", "sub", "s")}
+       INNER JOIN sessions s ON s.id = sub.session_id AND s.current_submission_id = sub.id
        INNER JOIN studios st ON st.id = s.studio_id
        INNER JOIN studio_members m ON m.studio_id = st.id AND m.user_id = ?
        INNER JOIN participants p ON p.session_id = s.id
@@ -61,71 +57,23 @@ function submissionForMember(submissionId: string, userId: string): TeacherSubmi
   return row ?? null;
 }
 
-/** An earlier sent version of an episode; has_audio is 0 once its files were deleted on replacement. */
-type PastVersion = {
-  id: string;
-  episode_id: string;
-  version: number;
-  duration_ms: number | null;
-  sent_at: number;
-  feedback: string | null;
-  has_audio: number;
-};
-
-function groupBy<T>(rows: readonly T[], key: (row: T) => string): Map<string, T[]> {
-  const grouped = new Map<string, T[]>();
-  for (const row of rows) {
-    const list = grouped.get(key(row));
-    if (list) {
-      list.push(row);
-    } else {
-      grouped.set(key(row), [row]);
-    }
-  }
-  return grouped;
-}
-
-/** Every replaced version of the class's episodes of this kind, by episode, newest first. */
-function pastVersions(studioId: string, kind: FeedbackKind): Map<string, PastVersion[]> {
-  const { table, sentAt, sessionKind } = FEEDBACK_TARGETS[kind];
-  const rows = db
-    .prepare(
-      `SELECT v.id, s.id AS episode_id, v.version, v.duration_ms, v.${sentAt} AS sent_at, v.feedback,
-         ${hasAudioSql(kind, "v", "s")} AS has_audio
-       FROM sessions s
-       INNER JOIN ${table} v ON v.session_id = s.id AND v.status = 'replaced'
-       WHERE s.studio_id = ? AND s.kind = ?
-       ORDER BY v.version DESC`
-    )
-    .all(studioId, sessionKind) as PastVersion[];
-  return groupBy(rows, (row) => row.episode_id);
-}
-
 type GroupRecordingRow = {
   id: string;
   episode_id: string;
   version: number;
   duration_ms: number | null;
   sent_at: number;
-  feedback: string | null;
   topic_id: string | null;
   topic_title: string | null;
 };
 
 type GroupVoiceRow = { take_id: string; track_id: string; student_id: string | null; name: string };
-type GroupVoice = Omit<GroupVoiceRow, "take_id">;
 
-/**
- * Each group's sent take and its earlier versions, with the voice file of each member in the order they joined
- * (for every version that still has its files).
- */
-function groupRecordings(
-  studioId: string
-): (GroupRecordingRow & { voices: GroupVoice[]; history: (PastVersion & { voices: GroupVoice[] })[] })[] {
+/** Each group's sent take, with the voice file of each member in the order they joined. */
+function groupRecordings(studioId: string): (GroupRecordingRow & { voices: Omit<GroupVoiceRow, "take_id">[] })[] {
   const takes = db
     .prepare(
-      `SELECT gt.id, s.id AS episode_id, gt.version, gt.duration_ms, gt.sent_at, gt.feedback,
-         t.id AS topic_id, t.title AS topic_title
+      `SELECT gt.id, s.id AS episode_id, gt.version, gt.duration_ms, gt.sent_at, t.id AS topic_id, t.title AS topic_title
        FROM sessions s
        INNER JOIN group_takes gt ON gt.id = s.current_take_id
        LEFT JOIN topics t ON t.id = s.topic_id
@@ -137,7 +85,7 @@ function groupRecordings(
     .prepare(
       `SELECT gt.id AS take_id, tr.id AS track_id, p.student_id, COALESCE(stu.name, p.name) AS name
        FROM sessions s
-       INNER JOIN group_takes gt ON gt.session_id = s.id AND ${hasAudioSql("groupTake", "gt", "s")}
+       INNER JOIN group_takes gt ON gt.id = s.current_take_id
        INNER JOIN tracks tr ON tr.recording_id = gt.recording_id
        INNER JOIN participants p ON p.id = tr.participant_id
        LEFT JOIN students stu ON stu.id = p.student_id
@@ -145,20 +93,15 @@ function groupRecordings(
        ORDER BY p.created_at, p.id`
     )
     .all(studioId) as GroupVoiceRow[];
-  const voicesByTake = groupBy(voices, (voice) => voice.take_id);
-  const voicesOf = (takeId: string): GroupVoice[] =>
-    (voicesByTake.get(takeId) ?? []).map(({ take_id: _takeId, ...voice }) => voice);
-  const history = pastVersions(studioId, "groupTake");
   return takes.map((take) => ({
     ...take,
-    voices: voicesOf(take.id),
-    history: (history.get(take.episode_id) ?? []).map((past) => ({ ...past, voices: voicesOf(past.id) })),
+    voices: voices.filter((voice) => voice.take_id === take.id).map(({ take_id: _takeId, ...voice }) => voice),
   }));
 }
 
 type TeacherGroupTake = { id: string; version: number; topic_title: string | null; class_name: string; names: string };
 
-/** A group's sent take that still has its files, if the teacher is a member of its class. */
+/** A group's sent take, if the teacher is a member of its class. */
 function groupTakeForMember(takeId: string, userId: string): TeacherGroupTake | null {
   const row = db
     .prepare(
@@ -168,7 +111,7 @@ function groupTakeForMember(takeId: string, userId: string): TeacherGroupTake | 
             LEFT JOIN students stu ON stu.id = p.student_id
             WHERE p.session_id = s.id ORDER BY p.created_at, p.id)) AS names
        FROM group_takes gt
-       INNER JOIN sessions s ON s.id = gt.session_id AND ${hasAudioSql("groupTake", "gt", "s")}
+       INNER JOIN sessions s ON s.id = gt.session_id AND s.current_take_id = gt.id
        INNER JOIN studios st ON st.id = s.studio_id
        INNER JOIN studio_members m ON m.studio_id = st.id AND m.user_id = ?
        LEFT JOIN topics t ON t.id = s.topic_id
@@ -235,7 +178,7 @@ export function registerClassRoutes(app: FastifyInstance): void {
       .all(studio.id);
     const submissions = db
       .prepare(
-        `SELECT sub.id, s.id AS episode_id, sub.version, sub.duration_ms, sub.ready_at, sub.feedback,
+        `SELECT sub.id, s.id AS episode_id, sub.version, sub.duration_ms, sub.ready_at,
            COALESCE(stu.name, p.name) AS student_name, stu.id AS student_id, t.id AS topic_id, t.title AS topic_title
          FROM sessions s
          INNER JOIN submissions sub ON sub.id = s.current_submission_id
@@ -245,17 +188,13 @@ export function registerClassRoutes(app: FastifyInstance): void {
          WHERE s.studio_id = ? AND s.kind = 'solo'
          ORDER BY sub.ready_at DESC`
       )
-      .all(studio.id) as { episode_id: string }[];
-    const submissionHistory = pastVersions(studio.id, "submission");
+      .all(studio.id);
     const students = classStudents(studio.id).map(({ id, name, emoji, photo, pin }) => ({ id, name, emoji, photo, pin }));
     return {
       class: { id: studio.id, name: studio.name, classToken: studio.class_token },
       topics,
       students,
-      submissions: submissions.map((submission) => ({
-        ...submission,
-        history: submissionHistory.get(submission.episode_id) ?? [],
-      })),
+      submissions,
       groupRecordings: groupRecordings(studio.id),
     };
   });
@@ -429,35 +368,6 @@ export function registerClassRoutes(app: FastifyInstance): void {
     const fileName = `${baseName}-${safeName(track.name)}-v${take.version}.mp3`;
     return streamFile(req, reply, groupVoicePath(voice), fileName, "audio/mpeg", download !== "1");
   });
-
-  // The teacher's comment on the current version of a solo recording or a group podcast; an empty text clears it.
-  for (const [kind, prefix] of [
-    ["submission", "/api/teacher/submissions/:versionId"],
-    ["groupTake", "/api/teacher/group-takes/:versionId"],
-  ] as const) {
-    app.put(`${prefix}/feedback`, async (req, reply) => {
-      const user = requireUser(req, reply);
-      if (!user) {
-        return;
-      }
-      const { versionId } = req.params as { versionId: string };
-      const parsed = feedbackSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return reply.code(400).send({ error: `Feedback can be up to ${FEEDBACK_MAX_CHARS} characters` });
-      }
-      const text = parsed.data.text === "" ? null : parsed.data.text;
-      const result = saveFeedback(kind, versionId, user.id, text);
-      if (!result.ok) {
-        req.log.warn({ kind, versionId, userId: user.id, status: result.status }, "feedback refused");
-        return reply.code(result.status).send({ error: result.error });
-      }
-      if (kind === "groupTake") {
-        broadcastGroup(result.sessionId);
-      }
-      req.log.info({ kind, versionId, userId: user.id, chars: text?.length ?? 0 }, text === null ? "feedback cleared" : "feedback saved");
-      return { feedback: text };
-    });
-  }
 
   app.delete("/api/teacher/episodes/:episodeId", async (req, reply) => {
     const user = requireUser(req, reply);

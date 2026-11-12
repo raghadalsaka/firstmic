@@ -2,7 +2,6 @@ import { db, type GroupTakeRow, type GroupTakeStatus, type SessionRow, type Stud
 import { newId, newToken } from "./ids.js";
 import { newPin } from "./roster.js";
 import { broadcast, connectedParticipantIds, disconnect } from "./rooms.js";
-import { pastFeedback, type PastFeedback } from "./feedback.js";
 
 /** Two-person podcasts: the student who creates the group and one partner. */
 export const GROUP_SIZE = 2;
@@ -31,8 +30,7 @@ export type GroupSnapshot = {
     startedAtMs: number;
     durationMs: number | null;
   } | null;
-  sent: { takeId: string; version: number; durationMs: number | null; sentAt: number; feedback: string | null } | null;
-  pastFeedback: PastFeedback[];
+  sent: { takeId: string; version: number; durationMs: number | null; sentAt: number } | null;
 };
 
 export type GroupAccess = { groupId: string; token: string };
@@ -106,15 +104,8 @@ export function groupSnapshot(sessionId: string): GroupSnapshot | null {
       : null,
     sent:
       sent && sent.version !== null && sent.sent_at !== null
-        ? {
-            takeId: sent.id,
-            version: sent.version,
-            durationMs: sent.duration_ms,
-            sentAt: sent.sent_at,
-            feedback: sent.feedback,
-          }
+        ? { takeId: sent.id, version: sent.version, durationMs: sent.duration_ms, sentAt: sent.sent_at }
         : null,
-    pastFeedback: pastFeedback("groupTake", session.id),
   };
 }
 

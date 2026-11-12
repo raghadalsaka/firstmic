@@ -244,7 +244,8 @@ CREATE INDEX IF NOT EXISTS idx_participants_student ON participants(student_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_group_pin ON sessions(studio_id, group_pin) WHERE group_pin IS NOT NULL;
 `);
 
-// Teacher feedback: one comment per sent version. A replaced version keeps its audio only while it has one.
+// Unused: left by the removed teacher-feedback feature. These ALTERs already ran on deployed databases, so they stay
+// rather than being deleted from the migration history.
 addColumns([
   "ALTER TABLE submissions ADD COLUMN feedback TEXT",
   "ALTER TABLE submissions ADD COLUMN feedback_at INTEGER",
@@ -322,9 +323,6 @@ export type GroupTakeRow = {
   created_at: number;
   stopped_at: number | null;
   sent_at: number | null;
-  feedback: string | null;
-  feedback_at: number | null;
-  feedback_by: string | null;
 };
 
 export type StudentRow = {
@@ -364,9 +362,6 @@ export type SubmissionRow = {
   error: string | null;
   created_at: number;
   ready_at: number | null;
-  feedback: string | null;
-  feedback_at: number | null;
-  feedback_by: string | null;
 };
 
 export type ParticipantRow = {

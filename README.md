@@ -16,12 +16,6 @@ limit. Whoever taps Record controls that take (Stop, Send, Try Again); if they d
 Each phone records only its own microphone, the server lines the two voices up and mixes them, and both students
 listen to the mix. Send gives the teacher the mix and each voice as three MP3s.
 
-**Feedback and history:** the teacher can write one comment on each recording's current version and edit it until a
-newer version is sent. Students see the comment on their record screen; in a group, both partners see it and can play
-the mix. When a newer Send succeeds, the older version stays in the teacher's history. If it had a comment, its audio
-(for a group: the mix and both voices) and the comment are kept, and students can play that mix or recording under
-**Past Feedback**. If it had no comment, its audio is deleted. Students never get a partner's separate voice.
-
 ## How it works
 
 - **Backend:** Fastify 5, SQLite and ffmpeg (`server/`). Classes, topics, student episodes and submissions live in

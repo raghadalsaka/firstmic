@@ -8,9 +8,8 @@ const props = withDefaults(
     /** Known length, shown before the file loads and for recordings whose file doesn't report one (MediaRecorder WebM). */
     durationMs?: number | null
     preload?: 'none' | 'metadata' | 'auto'
-    autoplay?: boolean
   }>(),
-  { durationMs: null, preload: 'metadata', autoplay: false },
+  { durationMs: null, preload: 'metadata' },
 )
 
 const emit = defineEmits<{ play: []; pause: []; ended: [] }>()
@@ -113,9 +112,7 @@ function onEnded(): void {
       ref="audio"
       :src="src"
       :preload="preload"
-      :autoplay="autoplay"
       class="hidden"
-      @loadedmetadata="readDuration"
       @durationchange="readDuration"
       @timeupdate="currentMs = (audio?.currentTime ?? 0) * 1000"
       @play="onPlay"

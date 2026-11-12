@@ -1,6 +1,4 @@
 // Mirrors GroupSnapshot in server/src/lib/groups.ts.
-import type { PastFeedback } from '../types/feedback'
-
 export type TakeStatus = 'recording' | 'mixing' | 'listening' | 'failed'
 
 export interface GroupMember {
@@ -26,8 +24,7 @@ export interface GroupState {
   topic: { id: string; title: string } | null
   members: GroupMember[]
   take: GroupTake | null
-  sent: { takeId: string; version: number; durationMs: number | null; sentAt: number; feedback: string | null } | null
-  pastFeedback: PastFeedback[]
+  sent: { takeId: string; version: number; durationMs: number | null; sentAt: number } | null
 }
 
 export interface GroupAccess {
