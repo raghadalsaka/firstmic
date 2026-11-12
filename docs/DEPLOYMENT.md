@@ -75,8 +75,10 @@ The domain's DNS must be on Cloudflare.
 1. Cloudflare **Zero Trust → Networks → Tunnels → Create a tunnel**, connector **Cloudflared**, name `firstmic-prod`.
 2. Copy the **token** from the install command shown (the long string after `--token`). It goes in the Droplet's
    `.env` in step 5. Don't run the install command; the `cloudflared` container uses the token.
-3. **Public hostname**: subdomain `firstmic`, domain `raghadalsaka.com`, service type **HTTP**, URL `firstmic:4100`.
-   Cloudflare creates the DNS record. Delete any older `A` record for the same name first.
+3. **Public hostname**: subdomain `mic`, domain `raghadalsaka.com`, service URL `http://firstmic:4100` (plain `http`:
+   Cloudflare serves HTTPS to visitors; `firstmic` is the container's name inside the stack). Cloudflare creates the DNS record. Delete any older `A`
+   record for the same name first. The current Cloudflare dashboard only lets you add the hostname once the tunnel
+   is connected, so add it after the first deployment has started `cloudflared`.
 
 The live call's signalling (`/ws`) is a WebSocket, which tunnels support. The call's audio goes straight between the
 two phones, not through the tunnel. Phones that can't reach each other directly need a TURN relay (`ICE_SERVERS`).
