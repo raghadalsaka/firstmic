@@ -15,7 +15,7 @@ const browser = await webkit.launch()
 const setup = await browser.newContext()
 const api = setup.request
 await api.post(`${base}/api/auth/google`, { data: { accessToken: fakeToken(`wk${Date.now()}@example.com`) } })
-const created = await (await api.post(`${base}/api/teacher/classes`, { data: { name: 'Grade 6 WebKit' } })).json()
+const created = await (await api.post(`${base}/api/teacher/classes`, { data: { name: 'WebKit Class' } })).json()
 await api.post(`${base}/api/teacher/classes/${created.class.id}/topics`, { data: { title: 'A very long topic title to check wrapping on small phones' } })
 const names = ['Noor', 'Abdulrahman Al-Hashimi', 'سارة', 'Li', 'Maximilian', 'Zoë']
 await api.post(`${base}/api/teacher/classes/${created.class.id}/students`, {
@@ -27,11 +27,11 @@ const page = await ctx.newPage()
 await page.goto(base)
 const steps = [
   ['home', async () => {
-    await page.getByRole('link', { name: 'Grade 6 WebKit' }).waitFor()
+    await page.getByRole('link', { name: 'WebKit Class' }).waitFor()
     await page.getByRole('button', { name: 'Sign In' }).waitFor()
   }],
   ['names', async () => {
-    await page.getByRole('link', { name: 'Grade 6 WebKit' }).click()
+    await page.getByRole('link', { name: 'WebKit Class' }).click()
     await page.getByRole('heading', { name: 'Who are you?' }).waitFor()
   }],
   ['pin', async () => {

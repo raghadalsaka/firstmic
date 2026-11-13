@@ -1,6 +1,6 @@
 # First Mic
 
-A private podcast app for Grade 6. It should feel like sending a voice message:
+A private podcast app for classrooms. It should feel like sending a voice message:
 
 **Student:** open the site and tap your class (or open its link) → tap your name and type the 6-digit PIN from the teacher → pick a topic → **Record** → **Stop** → listen → **Save** (or **Try Again**).
 Recordings stop automatically at 3 minutes; there is no minimum. Every saved recording goes into the student's

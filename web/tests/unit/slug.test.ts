@@ -3,12 +3,12 @@ import { classPath, slugify } from '../../src/utils/slug'
 
 describe('slugify', () => {
   it('turns a class name into a lowercase hyphenated slug', () => {
-    expect(slugify('Grade 6B')).toBe('grade-6b')
+    expect(slugify('Room 12B')).toBe('room-12b')
     expect(slugify('  Ms. Raghad’s  Class (2026)! ')).toBe('ms-raghad-s-class-2026')
   })
 
   it('keeps non-Latin letters', () => {
-    expect(slugify('الصف السادس ب')).toBe('الصف-السادس-ب')
+    expect(slugify('صف العلوم')).toBe('صف-العلوم')
   })
 
   it('returns an empty slug when nothing readable is left', () => {
@@ -24,7 +24,7 @@ describe('slugify', () => {
 
 describe('classPath', () => {
   it('puts the slug after the private token', () => {
-    expect(classPath('abc123', 'Grade 6B')).toBe('/c/abc123/grade-6b')
+    expect(classPath('abc123', 'Room 12B')).toBe('/c/abc123/room-12b')
   })
 
   it('percent-encodes non-Latin slugs and drops an empty one', () => {

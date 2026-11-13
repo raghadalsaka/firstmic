@@ -45,7 +45,7 @@ async function createClass(): Promise<void> {
     <form class="panel flex flex-col gap-3 p-5 sm:flex-row sm:items-end" @submit.prevent="createClass">
       <label class="flex flex-1 flex-col gap-1 font-semibold">
         New class
-        <input v-model="newName" class="field-input" placeholder="Grade 6B" maxlength="120" required />
+        <input v-model="newName" class="field-input" placeholder="Room 12B" maxlength="120" required />
       </label>
       <button class="btn btn-primary" type="submit" :disabled="!newName.trim()">Create Class</button>
     </form>

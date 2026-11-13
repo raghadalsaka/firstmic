@@ -120,7 +120,7 @@ function toneLevels(file) {
 
 // ---- Setup: a teacher, a class with a topic and four students, and a second class ----
 assert.equal((await json('/api/auth/google', { body: { accessToken: fakeToken(`groups${Date.now()}@example.com`) } })).status, 200)
-const classId = (await json('/api/teacher/classes', { body: { name: 'Grade 6G' } })).data.class.id
+const classId = (await json('/api/teacher/classes', { body: { name: 'Room 12G' } })).data.class.id
 const topic = (await json(`/api/teacher/classes/${classId}/topics`, { body: { title: 'Our school trip' } })).data.topic
 const roster = (
   await json(`/api/teacher/classes/${classId}/students`, {
@@ -129,7 +129,7 @@ const roster = (
 ).data.students
 const byName = Object.fromEntries(roster.map((s) => [s.name, s]))
 const classToken = (await json(`/api/teacher/classes/${classId}`)).data.class.classToken
-const otherClassId = (await json('/api/teacher/classes', { body: { name: 'Grade 6H' } })).data.class.id
+const otherClassId = (await json('/api/teacher/classes', { body: { name: 'Room 12H' } })).data.class.id
 await json(`/api/teacher/classes/${otherClassId}/topics`, { body: { title: 'Elsewhere' } })
 const zed = (await json(`/api/teacher/classes/${otherClassId}/students`, { body: { students: [{ name: 'Zed', emoji: '🐼' }] } })).data.students[0]
 const otherClassToken = (await json(`/api/teacher/classes/${otherClassId}`)).data.class.classToken

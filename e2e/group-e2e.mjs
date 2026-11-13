@@ -31,7 +31,7 @@ const teacherApi = async (urlPath, body) => {
   })
   return res.json()
 }
-const classId = (await teacherApi('/api/teacher/classes', { name: 'Grade 6D' })).class.id
+const classId = (await teacherApi('/api/teacher/classes', { name: 'Room 12D' })).class.id
 await teacherApi(`/api/teacher/classes/${classId}/topics`, { title: 'Our favourite game' })
 const students = (
   await teacherApi(`/api/teacher/classes/${classId}/students`, {
