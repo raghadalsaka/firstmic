@@ -7,7 +7,7 @@ import { formatClock } from '../utils/format'
 import { useGroupRoom } from './useGroupRoom'
 
 const props = defineProps<{ classToken: string; groupId: string; token: string }>()
-const emit = defineEmits<{ leave: []; gone: [] }>()
+const emit = defineEmits<{ leave: []; gone: []; openRecordings: [] }>()
 
 const room = useGroupRoom({
   classToken: props.classToken,
@@ -142,10 +142,10 @@ const callText = computed(() => {
       <p v-if="hitLimit" class="text-ink-soft">Time's up! Your recording stopped at {{ formatClock(maxMs) }}.</p>
       <p v-else-if="isShort" class="text-ink-soft">Tip: try to talk for at least 2 minutes.</p>
       <div v-if="view?.canControl" class="flex w-full max-w-sm flex-col gap-4">
-        <button class="btn btn-good btn-large" :disabled="busy" @click="room.send">Send</button>
+        <button class="btn btn-good btn-large" :disabled="busy" @click="room.send">Save for Both</button>
         <button class="btn" :disabled="busy" @click="room.tryAgain">Try Again</button>
       </div>
-      <p v-else class="max-w-sm text-ink-soft">Listen together. {{ controllerName }} chooses Send or Try Again.</p>
+      <p v-else class="max-w-sm text-ink-soft">Listen together. {{ controllerName }} chooses Save for Both or Try Again.</p>
     </template>
 
     <template v-else-if="current === 'failed'">
@@ -155,10 +155,13 @@ const callText = computed(() => {
     </template>
 
     <template v-else-if="current === 'sent'">
-      <p class="animate-stamp font-display text-4xl font-extrabold text-good" role="status">Sent!</p>
+      <p class="animate-stamp font-display text-4xl font-extrabold text-good" role="status">Saved!</p>
       <AudioPlayer v-if="mixUrl" :src="mixUrl" :duration-ms="group?.sent?.durationMs" class="max-w-sm" />
-      <p class="max-w-sm text-ink-soft">Your teacher has your podcast. It stays with them until you send a new one.</p>
-      <button class="btn" @click="room.tryAgain">Try Again</button>
+      <p class="max-w-sm text-ink-soft">It's in My Recordings for both of you. Each of you chooses what to submit.</p>
+      <div class="flex w-full max-w-sm flex-col gap-4">
+        <button class="btn btn-good btn-large" @click="emit('openRecordings')">My Recordings</button>
+        <button class="btn" @click="room.tryAgain">Try Again</button>
+      </div>
     </template>
 
     <p v-if="actionError" class="alert-bad max-w-sm" role="alert">{{ actionError }}</p>

@@ -13,20 +13,21 @@ const props = defineProps<{
   maxSeconds: number
 }>()
 
-const emit = defineEmits<{ changeTopic: []; signedOut: [] }>()
+const emit = defineEmits<{ changeTopic: []; signedOut: []; saved: [] }>()
 
-const { phase, elapsedMs, maxMs, sendPercent, hasSent, audioUrl, record, stop, tryAgain, send } = useRecorder({
+const { phase, elapsedMs, maxMs, sendPercent, audioUrl, record, stop, tryAgain, send } = useRecorder({
   classToken: props.classToken,
   topicId: props.topicId,
   studentToken: props.studentToken,
   maxSeconds: props.maxSeconds,
   onSignedOut: () => emit('signedOut'),
+  onSaved: () => emit('saved'),
 })
 
 const isBusy = computed(() => ['starting', 'recording', 'sending'].includes(phase.value))
 const showTimer = computed(() => ['recording', 'recorded', 'sending', 'send-failed'].includes(phase.value))
 const isShort = computed(() => elapsedMs.value < SUGGESTED_MIN_SECONDS * 1000)
-const showPlayer = computed(() => audioUrl.value !== null && ['recorded', 'send-failed', 'sent'].includes(phase.value))
+const showPlayer = computed(() => audioUrl.value !== null && ['recorded', 'send-failed'].includes(phase.value))
 const hitLimit = computed(() => elapsedMs.value >= maxMs - 250)
 </script>
 
@@ -60,9 +61,6 @@ const hitLimit = computed(() => elapsedMs.value >= maxMs - 250)
       <p v-if="phase === 'mic-blocked'" class="alert-bad max-w-sm" role="alert">
         Your microphone is turned off for this page. Allow the microphone in your browser, then tap Record again.
       </p>
-      <p v-else-if="hasSent" class="max-w-sm text-ink-soft">
-        Your sent recording stays with your teacher until you send a new one.
-      </p>
       <p v-else class="max-w-sm text-ink-soft">You can talk for up to {{ formatClock(maxMs) }}.</p>
     </template>
 
@@ -78,25 +76,19 @@ const hitLimit = computed(() => elapsedMs.value >= maxMs - 250)
 
     <template v-if="phase === 'recorded' || phase === 'send-failed'">
       <p v-if="phase === 'send-failed'" class="alert-bad max-w-sm" role="alert">
-        Couldn't send. Your recording is safe on this device.
+        Couldn't save. Your recording is safe on this device.
       </p>
       <p v-else-if="hitLimit" class="text-ink-soft">Time's up! Your recording stopped at {{ formatClock(maxMs) }}.</p>
       <p v-else-if="isShort" class="text-ink-soft">Tip: try to talk for at least 2 minutes.</p>
       <div class="flex w-full max-w-sm flex-col gap-4">
-        <button class="btn btn-good btn-large" @click="send">Send</button>
+        <button class="btn btn-good btn-large" @click="send">Save</button>
         <button class="btn" @click="tryAgain">Try Again</button>
       </div>
     </template>
 
     <template v-else-if="phase === 'sending'">
-      <p class="text-xl font-bold" aria-live="polite">Sending… {{ sendPercent }}%</p>
+      <p class="text-xl font-bold" aria-live="polite">Saving… {{ sendPercent }}%</p>
       <p class="text-ink-soft">Keep this page open.</p>
-    </template>
-
-    <template v-else-if="phase === 'sent'">
-      <p class="animate-stamp font-display text-4xl font-extrabold text-good" role="status">Sent!</p>
-      <p class="text-ink-soft">Your teacher has your recording.</p>
-      <button class="btn" @click="tryAgain">Try Again</button>
     </template>
 
     <p v-else-if="phase === 'unsupported'" class="alert-bad max-w-sm" role="alert">

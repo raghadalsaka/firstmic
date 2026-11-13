@@ -21,8 +21,11 @@ import {
 import { createRateLimiter } from "../lib/rate-limit.js";
 import { pinMatches } from "../lib/roster.js";
 import { classStudents } from "../lib/roster.js";
-import { trackChunksDir } from "../lib/storage.js";
-import { removeTrackMedia } from "../jobs/submissions.js";
+import { submissionAudioPath, trackChunksDir } from "../lib/storage.js";
+import { streamFile } from "../lib/http-file.js";
+import { deleteRecording, removeTrackMedia } from "../jobs/submissions.js";
+import { getOrCreateEpisode } from "../lib/episodes.js";
+import { submissionsOpen } from "../lib/deadline.js";
 
 const DURATION_SLACK_SECONDS = 30;
 
@@ -95,6 +98,27 @@ export function requireClass(req: FastifyRequest, reply: FastifyReply): StudioRo
 
 type EpisodeStudent = { participant: ParticipantRow; session: SessionRow };
 
+/** One of the signed-in student's saved recordings (:submissionId). */
+function requireOwnRecording(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  student: StudentRow
+): Pick<SubmissionRow, "id" | "recording_id"> | null {
+  const { submissionId } = req.params as { submissionId: string };
+  const recording = db
+    .prepare(
+      `SELECT sub.id, sub.recording_id FROM submissions sub
+       INNER JOIN sessions s ON s.id = sub.session_id AND s.student_id = ? AND s.kind = 'solo'
+       WHERE sub.id = ? AND sub.status = 'ready'`
+    )
+    .get(student.id, submissionId) as Pick<SubmissionRow, "id" | "recording_id"> | undefined;
+  if (!recording) {
+    reply.code(404).send({ error: "Recording not found" });
+    return null;
+  }
+  return recording;
+}
+
 function requireEpisodeStudent(req: FastifyRequest, reply: FastifyReply): EpisodeStudent | null {
   return requireParticipantSession(req, reply, "solo");
 }
@@ -136,33 +160,6 @@ const createSubmission = db.transaction(
       "INSERT INTO submissions (id, session_id, recording_id, track_id, status, created_at) VALUES (?, ?, ?, ?, 'sending', ?)"
     ).run(submissionId, student.session.id, recordingId, trackId, now);
     return { submissionId, trackId, abandonedTrackIds: abandoned.map((row) => row.track_id) };
-  }
-);
-
-const getOrCreateEpisode = db.transaction(
-  (studioId: string, student: StudentRow, topic: TopicRow): { episodeId: string; token: string; created: boolean } => {
-    const existing = db
-      .prepare(
-        `SELECT s.id AS episodeId, p.token FROM sessions s
-         INNER JOIN participants p ON p.session_id = s.id
-         WHERE s.student_id = ? AND s.topic_id = ?`
-      )
-      .get(student.id, topic.id) as { episodeId: string; token: string } | undefined;
-    if (existing) {
-      return { ...existing, created: false };
-    }
-    const now = Date.now();
-    const episodeId = newId();
-    const token = newToken();
-    // Solo episodes never host a live room, so they start ended and their invite link never works.
-    db.prepare(
-      `INSERT INTO sessions (id, studio_id, title, status, invite_token, created_at, ended_at, kind, topic_id, student_id)
-       VALUES (?, ?, ?, 'ended', ?, ?, ?, 'solo', ?, ?)`
-    ).run(episodeId, studioId, `${student.name} - ${topic.title}`, newToken(), now, now, topic.id, student.id);
-    db.prepare(
-      "INSERT INTO participants (id, session_id, student_id, name, role, token, created_at) VALUES (?, ?, ?, ?, 'guest', ?, ?)"
-    ).run(newId(), episodeId, student.id, student.name, token, now);
-    return { episodeId, token, created: true };
   }
 );
 
@@ -216,6 +213,78 @@ export function registerStudentRoutes(app: FastifyInstance): void {
     return { studentToken: token, student: publicStudent(student) };
   });
 
+  // My Recordings: every recording the student saved, on any topic, and which one they submitted to the teacher.
+  app.get("/api/class/:classToken/recordings", async (req, reply) => {
+    const studio = requireClass(req, reply);
+    const student = studio && requireSignedInStudent(req, reply, studio);
+    if (!studio || !student) {
+      return;
+    }
+    const recordings = db
+      .prepare(
+        `SELECT sub.id, t.title AS topicTitle, sub.with_names AS withNames,
+           sub.ready_at AS savedAt, sub.duration_ms AS durationMs
+         FROM sessions s
+         INNER JOIN submissions sub ON sub.session_id = s.id AND sub.status = 'ready'
+         LEFT JOIN topics t ON t.id = s.topic_id
+         WHERE s.student_id = ? AND s.kind = 'solo'
+         ORDER BY sub.ready_at DESC`
+      )
+      .all(student.id);
+    return {
+      recordings,
+      submittedId: student.submitted_submission_id ?? null,
+      deadline: studio.submission_deadline ?? null,
+      open: submissionsOpen(studio),
+    };
+  });
+
+  app.get("/api/class/:classToken/recordings/:submissionId/audio", async (req, reply) => {
+    const studio = requireClass(req, reply);
+    const student = studio && requireSignedInStudent(req, reply, studio);
+    const recording = student && requireOwnRecording(req, reply, student);
+    if (!recording) {
+      return;
+    }
+    return streamFile(req, reply, submissionAudioPath(recording.id), "recording.mp3", "audio/mpeg", true);
+  });
+
+  // Submits one saved recording to the teacher, replacing the one submitted before, until the class deadline.
+  app.post("/api/class/:classToken/recordings/:submissionId/submit", async (req, reply) => {
+    const studio = requireClass(req, reply);
+    const student = studio && requireSignedInStudent(req, reply, studio);
+    const recording = student && requireOwnRecording(req, reply, student);
+    if (!studio || !student || !recording) {
+      return;
+    }
+    if (!submissionsOpen(studio)) {
+      req.log.warn({ studentId: student.id, submissionId: recording.id }, "submit refused: deadline passed");
+      return reply.code(409).send({ error: "The deadline has passed, so your submission can't change now." });
+    }
+    const now = Date.now();
+    db.prepare("UPDATE students SET submitted_submission_id = ?, submitted_at = ? WHERE id = ?").run(recording.id, now, student.id);
+    req.log.info(
+      { studentId: student.id, submissionId: recording.id, previous: student.submitted_submission_id ?? null },
+      "recording submitted"
+    );
+    return { submittedId: recording.id };
+  });
+
+  app.delete("/api/class/:classToken/recordings/:submissionId", async (req, reply) => {
+    const studio = requireClass(req, reply);
+    const student = studio && requireSignedInStudent(req, reply, studio);
+    const recording = student && requireOwnRecording(req, reply, student);
+    if (!student || !recording) {
+      return;
+    }
+    if (student.submitted_submission_id === recording.id) {
+      return reply.code(409).send({ error: "This is the recording you submitted, so it stays." });
+    }
+    deleteRecording(recording);
+    req.log.info({ studentId: student.id, submissionId: recording.id }, "recording deleted by student");
+    return { ok: true };
+  });
+
   app.get("/api/class/:classToken/me", async (req, reply) => {
     const studio = requireClass(req, reply);
     if (!studio) {
@@ -260,20 +329,7 @@ export function registerStudentRoutes(app: FastifyInstance): void {
     if (!student) {
       return;
     }
-    const current = student.session.current_submission_id
-      ? (db
-          .prepare("SELECT id, version, duration_ms, ready_at FROM submissions WHERE id = ?")
-          .get(student.session.current_submission_id) as Pick<SubmissionRow, "id" | "version" | "duration_ms" | "ready_at">)
-      : null;
-    return {
-      episode: {
-        id: student.session.id,
-        studentName: student.participant.name,
-        current: current
-          ? { id: current.id, version: current.version, durationMs: current.duration_ms, sentAt: current.ready_at }
-          : null,
-      },
-    };
+    return { episode: { id: student.session.id, studentName: student.participant.name } };
   });
 
   app.post("/api/student/submissions", async (req, reply) => {

@@ -2,19 +2,24 @@
 
 A private podcast app for Grade 6. It should feel like sending a voice message:
 
-**Student:** open the site and tap your class (or open its link) → tap your name and type the 6-digit PIN from the teacher → pick a topic → **Record** → **Stop** → listen → **Send** (or **Try Again**).
-Recordings stop automatically at 3 minutes; there is no minimum. A student can record again and send a
-replacement at any time. The previous recording stays with the teacher until the new one has been sent successfully.
+**Student:** open the site and tap your class (or open its link) → tap your name and type the 6-digit PIN from the teacher → pick a topic → **Record** → **Stop** → listen → **Save** (or **Try Again**).
+Recordings stop automatically at 3 minutes; there is no minimum. Every saved recording goes into the student's
+**My Recordings** list, on any topic, alone or with a partner. From there the student listens, deletes the ones they
+don't want, and taps **Submit to Teacher** on the one they like best. Each student submits one recording for the class
+and can change it until the class deadline; the submitted one is marked **✓ Submitted**.
 
-**Teacher:** sign in with Google (top right of the home page) to a private dashboard to create a class, manage its topics, copy the class link, and play or download
-every student's latest recording as an MP3.
+**Teacher:** sign in with Google (top right of the home page) to a private dashboard to create a class, manage its
+topics and students, copy the class link, and set a **submission deadline**. After the deadline students can still
+record, but can't submit or change their submission. The dashboard lists each student's submitted recording, to play or
+download as an MP3, and who hasn't submitted yet.
 
 **Two-person podcasts:** after picking a topic, a student chooses **With a Partner** and gets a 6-digit group PIN
 to share (there is no invite link). A classmate taps **Join a Partner** and types it; once two students are in, the
-group is full. They talk live and use the same Record → Stop → Listen → Send flow with Try Again and the 3-minute
-limit. Whoever taps Record controls that take (Stop, Send, Try Again); if they drop off, their partner takes over.
-Each phone records only its own microphone, the server lines the two voices up and mixes them, and both students
-listen to the mix. Send gives the teacher the mix and each voice as three MP3s.
+group is full. They talk live and use Record → Stop → Listen with Try Again and the 3-minute limit. Whoever taps
+Record controls that take (Stop, Save for Both, Try Again); if they drop off, their partner takes over. Each phone
+records only its own microphone, the server lines the two voices up and mixes them, and both students listen to the
+mix. **Save for Both** puts a copy of the mix in each student's My Recordings; the group submits nothing itself, and
+each student decides whether to submit their copy.
 
 ## How it works
 

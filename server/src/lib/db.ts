@@ -255,6 +255,16 @@ addColumns([
   "ALTER TABLE group_takes ADD COLUMN feedback_by TEXT REFERENCES users(id) ON DELETE SET NULL",
 ]);
 
+// My Recordings: every recording a student saves stays in their list (status 'ready'); they submit one of them to the
+// teacher, which students.submitted_submission_id points at. The class deadline locks that choice.
+addColumns([
+  "ALTER TABLE studios ADD COLUMN submission_deadline INTEGER",
+  "ALTER TABLE students ADD COLUMN submitted_submission_id TEXT REFERENCES submissions(id) ON DELETE SET NULL",
+  "ALTER TABLE students ADD COLUMN submitted_at INTEGER",
+  "ALTER TABLE submissions ADD COLUMN with_names TEXT",
+]);
+db.exec("CREATE INDEX IF NOT EXISTS idx_students_submitted ON students(submitted_submission_id)");
+
 // Backfill: solo episodes' participants name their student, as group members do (idempotent).
 db.exec(`
   UPDATE participants SET student_id = (SELECT s.student_id FROM sessions s WHERE s.id = participants.session_id)
@@ -284,6 +294,8 @@ export type StudioRow = {
   name: string;
   created_at: number;
   class_token?: string | null;
+  /** After this time (epoch ms) students can't change what they submitted; NULL for no deadline. */
+  submission_deadline?: number | null;
 };
 
 export type SessionRow = {
@@ -337,6 +349,9 @@ export type StudentRow = {
   sort: number;
   created_at: number;
   updated_at: number;
+  /** The one recording from My Recordings the student submitted to the teacher. */
+  submitted_submission_id?: string | null;
+  submitted_at?: number | null;
 };
 
 export type TopicRow = {
@@ -349,6 +364,7 @@ export type TopicRow = {
   updated_at: number;
 };
 
+/** ready: saved in the student's My Recordings. replaced: from before recordings were kept (no file). */
 export type SubmissionStatus = "sending" | "ready" | "failed" | "replaced";
 
 export type SubmissionRow = {
@@ -362,6 +378,8 @@ export type SubmissionRow = {
   error: string | null;
   created_at: number;
   ready_at: number | null;
+  /** A copy of a group recording: the partners' names when it was saved. NULL for a recording made alone. */
+  with_names?: string | null;
 };
 
 export type ParticipantRow = {

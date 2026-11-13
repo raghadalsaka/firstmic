@@ -11,31 +11,20 @@ import StudentsPanel from './StudentsPanel.vue'
 type Topic = { id: string; title: string; active: number; sort: number }
 type Submission = {
   id: string
-  episode_id: string
   version: number
   duration_ms: number | null
-  ready_at: number
+  submitted_at: number
+  with_names: string | null
   student_name: string
   student_id: string | null
   topic_id: string | null
   topic_title: string | null
 }
-type GroupRecording = {
-  id: string
-  episode_id: string
-  version: number
-  duration_ms: number | null
-  sent_at: number
-  topic_id: string | null
-  topic_title: string | null
-  voices: { track_id: string; student_id: string | null; name: string }[]
-}
 type ClassDetail = {
-  class: { id: string; name: string; classToken: string }
+  class: { id: string; name: string; classToken: string; deadline: number | null; submissionsOpen: boolean }
   topics: Topic[]
   students: RosterStudent[]
   submissions: Submission[]
-  groupRecordings: GroupRecording[]
 }
 
 const props = defineProps<{ classId: string }>()
@@ -48,6 +37,7 @@ const topicDraft = ref('')
 const editingId = ref<string | null>(null)
 const topicInput = ref<HTMLInputElement | null>(null)
 const topicFilter = ref('')
+const deadlineDraft = ref('')
 
 const classLink = computed(() =>
   detail.value ? `${window.location.origin}${classPath(detail.value.class.classToken, detail.value.class.name)}` : '',
@@ -62,20 +52,25 @@ const visibleSubmissions = computed(() => {
     .map((item) => ({ ...item, student: item.student_id ? students.get(item.student_id) : undefined }))
 })
 
-const visibleGroupRecordings = computed(() => {
-  const students = studentsById.value
-  return (detail.value?.groupRecordings ?? [])
-    .filter((item) => !topicFilter.value || item.topic_id === topicFilter.value)
-    .map((item) => ({
-      ...item,
-      names: item.voices.map((voice) => voice.name).join(' & '),
-      voices: item.voices.map((voice) => ({ ...voice, student: voice.student_id ? students.get(voice.student_id) : undefined })),
-    }))
+// Students who haven't submitted a recording yet, in roster order.
+const notSubmitted = computed(() => {
+  const submitted = new Set((detail.value?.submissions ?? []).map((item) => item.student_id))
+  return (detail.value?.students ?? []).filter((student) => !submitted.has(student.id))
 })
+const deadlinePassed = computed(() => detail.value?.class.submissionsOpen === false)
+
+/** "2026-11-20T15:00" in the teacher's own time zone, as a datetime-local input expects. */
+function toLocalInput(epochMs: number): string {
+  const date = new Date(epochMs)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
 
 async function load(): Promise<void> {
   try {
     detail.value = await api<ClassDetail>(`/api/teacher/classes/${props.classId}`)
+    const deadline = detail.value.class.deadline
+    deadlineDraft.value = deadline === null ? '' : toLocalInput(deadline)
   } catch (err) {
     loadError.value = err instanceof ApiError && err.status === 404 ? 'Class not found.' : 'Could not load the class.'
   }
@@ -161,9 +156,7 @@ function moveTopic(index: number, offset: -1 | 1): void {
 }
 
 function deleteTopic(topic: Topic): void {
-  const recordings =
-    (detail.value?.submissions.filter((item) => item.topic_id === topic.id).length ?? 0) +
-    (detail.value?.groupRecordings.filter((item) => item.topic_id === topic.id).length ?? 0)
+  const recordings = detail.value?.submissions.filter((item) => item.topic_id === topic.id).length ?? 0
   const warning =
     recordings === 0
       ? 'No recordings have been sent for it yet.'
@@ -174,11 +167,24 @@ function deleteTopic(topic: Topic): void {
   void run(() => api(`/api/teacher/topics/${topic.id}`, { method: 'DELETE' }))
 }
 
-function deleteEpisode(episodeId: string, question: string): void {
-  if (!window.confirm(`${question} This can't be undone.`)) {
+function saveDeadline(deadline: number | null): void {
+  void run(() => api(`/api/teacher/classes/${props.classId}/deadline`, { method: 'PUT', body: { deadline } }))
+}
+
+function setDeadline(): void {
+  const deadline = new Date(deadlineDraft.value).getTime()
+  if (Number.isNaN(deadline)) {
+    actionError.value = 'Pick a date and time for the deadline.'
     return
   }
-  void run(() => api(`/api/teacher/episodes/${episodeId}`, { method: 'DELETE' }))
+  saveDeadline(deadline)
+}
+
+function deleteSubmission(item: Submission): void {
+  if (!window.confirm(`Delete ${item.student_name}'s submitted recording? They can submit another. This can't be undone.`)) {
+    return
+  }
+  void run(() => api(`/api/teacher/submissions/${item.id}`, { method: 'DELETE' }))
 }
 </script>
 
@@ -246,52 +252,41 @@ function deleteEpisode(episodeId: string, question: string): void {
 
       <StudentsPanel :class-id="detail.class.id" :class-name="detail.class.name" :students="detail.students" @changed="load" />
 
+      <section class="panel flex flex-col gap-3 p-5" data-testid="deadline">
+        <h2 class="font-display text-xl font-extrabold">Submission deadline</h2>
+        <p v-if="detail.class.deadline === null" class="text-ink-soft">
+          No deadline. Students can submit and change their submission at any time.
+        </p>
+        <p v-else-if="deadlinePassed" class="font-semibold text-bad">
+          Closed on {{ formatDateTime(detail.class.deadline) }}. Students can still record, but can't change what they submitted.
+        </p>
+        <p v-else class="text-ink-soft">
+          Students can submit and change their submission until {{ formatDateTime(detail.class.deadline) }}.
+        </p>
+        <form class="flex flex-col gap-3 sm:flex-row" @submit.prevent="setDeadline">
+          <input v-model="deadlineDraft" type="datetime-local" class="field-input text-base" aria-label="Deadline" />
+          <button class="btn btn-primary btn-small shrink-0" type="submit" :disabled="!deadlineDraft">Set Deadline</button>
+          <button v-if="detail.class.deadline !== null" class="btn btn-small shrink-0" type="button" @click="saveDeadline(null)">
+            Remove Deadline
+          </button>
+        </form>
+      </section>
+
       <section class="panel flex flex-col gap-4 p-5">
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <h2 class="font-display text-xl font-extrabold">Recordings</h2>
+          <h2 class="font-display text-xl font-extrabold">
+            Submissions
+            <span class="text-ink-soft">({{ detail.submissions.length }} of {{ detail.students.length }})</span>
+          </h2>
           <select v-model="topicFilter" class="field-input w-auto text-base" aria-label="Filter by topic">
             <option value="">All topics</option>
             <option v-for="topic in detail.topics" :key="topic.id" :value="topic.id">{{ topic.title }}</option>
           </select>
         </div>
-        <p v-if="visibleSubmissions.length === 0 && visibleGroupRecordings.length === 0" class="text-ink-soft">No recordings yet.</p>
-        <ul v-if="visibleGroupRecordings.length > 0" class="flex flex-col gap-4">
-          <li
-            v-for="item in visibleGroupRecordings"
-            :key="item.id"
-            class="flex flex-col gap-3 rounded-tile border-3 border-rule p-4"
-            data-testid="group-recording"
-          >
-            <div class="flex flex-wrap items-baseline justify-between gap-2">
-              <p class="flex flex-wrap items-center gap-2 text-lg font-bold" dir="auto">
-                <template v-for="voice in item.voices" :key="voice.track_id">
-                  <StudentBadge v-if="voice.student" :student="voice.student" size="sm" />
-                </template>
-                {{ item.names }}
-              </p>
-              <p class="text-ink-soft">
-                Together · {{ item.topic_title ?? 'Topic removed' }} ·
-                {{ item.duration_ms === null ? '' : formatClock(item.duration_ms) + ' · ' }}
-                <span v-if="item.version > 1">sent {{ item.version }} times · </span>
-                {{ formatDateTime(item.sent_at) }}
-              </p>
-            </div>
-            <AudioPlayer :src="`/api/teacher/group-takes/${item.id}/audio`" :duration-ms="item.duration_ms" preload="none" />
-            <div class="flex flex-wrap gap-3">
-              <a class="btn btn-small" :href="`/api/teacher/group-takes/${item.id}/audio?download=1`">Download Mix</a>
-              <a
-                v-for="voice in item.voices"
-                :key="voice.track_id"
-                class="btn btn-small"
-                :href="`/api/teacher/group-takes/${item.id}/audio?voice=${voice.track_id}&download=1`"
-                dir="auto"
-              >
-                {{ voice.name }}'s Voice
-              </a>
-              <button class="btn btn-small" @click="deleteEpisode(item.episode_id, `Delete the podcast by ${item.names}? Their group is removed too.`)">Delete</button>
-            </div>
-          </li>
-        </ul>
+        <p v-if="notSubmitted.length > 0" class="text-ink-soft" data-testid="not-submitted" dir="auto">
+          Not submitted yet: {{ notSubmitted.map((student) => student.name).join(', ') }}
+        </p>
+        <p v-if="visibleSubmissions.length === 0" class="text-ink-soft">No submissions yet.</p>
         <ul class="flex flex-col gap-4">
           <li
             v-for="item in visibleSubmissions"
@@ -304,17 +299,17 @@ function deleteEpisode(episodeId: string, question: string): void {
                 <StudentBadge v-if="item.student" :student="item.student" size="sm" />
                 {{ item.student_name }}
               </p>
-              <p class="text-ink-soft">
+              <p class="text-ink-soft" dir="auto">
                 {{ item.topic_title ?? 'Topic removed' }} ·
+                <template v-if="item.with_names">with {{ item.with_names }} · </template>
                 {{ item.duration_ms === null ? '' : formatClock(item.duration_ms) + ' · ' }}
-                <span v-if="item.version > 1">sent {{ item.version }} times · </span>
-                {{ formatDateTime(item.ready_at) }}
+                submitted {{ formatDateTime(item.submitted_at) }}
               </p>
             </div>
             <AudioPlayer :src="`/api/teacher/submissions/${item.id}/audio`" :duration-ms="item.duration_ms" preload="none" />
             <div class="flex flex-wrap gap-3">
               <a class="btn btn-small" :href="`/api/teacher/submissions/${item.id}/audio?download=1`">Download</a>
-              <button class="btn btn-small" @click="deleteEpisode(item.episode_id, `Delete ${item.student_name}'s recording?`)">Delete</button>
+              <button class="btn btn-small" @click="deleteSubmission(item)">Delete</button>
             </div>
           </li>
         </ul>

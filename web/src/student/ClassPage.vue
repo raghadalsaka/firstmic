@@ -9,6 +9,7 @@ import { isPin } from '../utils/roster'
 import { classPath } from '../utils/slug'
 import type { GroupAccess } from '../group/types'
 import GroupPanel from './GroupPanel.vue'
+import MyRecordingsPanel from './MyRecordingsPanel.vue'
 import RecordPanel from './RecordPanel.vue'
 import { forgetStudent, loadLogin, saveLogin, type StoredLogin } from './storage'
 
@@ -34,6 +35,7 @@ const groupPin = ref('')
 const groupError = ref('')
 const groupBusy = ref(false)
 const notice = ref('')
+const showingRecordings = ref(false)
 
 const pinComplete = computed(() => isPin(pin.value))
 const groupPinComplete = computed(() => isPin(groupPin.value))
@@ -107,11 +109,18 @@ function notMe(): void {
 }
 
 function backToTopics(): void {
+  showingRecordings.value = false
   topic.value = null
   recordAlone.value = false
   groupAccess.value = null
   joining.value = false
   groupError.value = ''
+}
+
+/** After a Save, solo or as a group: the student picks from My Recordings what to submit. */
+function openRecordings(): void {
+  backToTopics()
+  showingRecordings.value = true
 }
 
 function pickTopic(item: Topic): void {
@@ -222,6 +231,14 @@ async function groupGone(): Promise<void> {
       </ul>
     </section>
 
+    <MyRecordingsPanel
+      v-else-if="showingRecordings"
+      :class-token="classToken"
+      :student-token="login.studentToken"
+      @record-another="backToTopics"
+      @signed-out="notMe"
+    />
+
     <GroupPanel
       v-else-if="groupAccess"
       :key="groupAccess.groupId"
@@ -230,6 +247,7 @@ async function groupGone(): Promise<void> {
       :token="groupAccess.token"
       @leave="backToTopics"
       @gone="groupGone"
+      @open-recordings="openRecordings"
     />
 
     <section v-else-if="joining" class="flex flex-col items-center gap-5 text-center">
@@ -270,6 +288,7 @@ async function groupGone(): Promise<void> {
         Your teacher hasn't added topics yet. Check back soon.
       </p>
       <p v-if="notice" class="alert-bad" role="status">{{ notice }}</p>
+      <button class="btn btn-good btn-large w-full" @click="openRecordings">My Recordings</button>
       <button
         v-for="item in info.topics"
         :key="item.id"
@@ -314,6 +333,7 @@ async function groupGone(): Promise<void> {
       :max-seconds="info.maxSeconds"
       @change-topic="backToTopics"
       @signed-out="notMe"
+      @saved="openRecordings"
     />
   </main>
 </template>

@@ -12,6 +12,7 @@ import {
 import { disconnect } from "../lib/rooms.js";
 import { enqueue, getTrack, onTrackSettled } from "./pipeline.js";
 import { probe, toSubmissionMp3 } from "./ffmpeg.js";
+import { nextVersion } from "../lib/episodes.js";
 
 const RAW_EXTENSIONS: readonly string[] = ["webm", "mp4", "pcm"];
 
@@ -94,35 +95,27 @@ export function failSubmission(submissionId: string, reason: string): void {
 }
 
 /**
- * Makes a finished submission the episode's current one. Starting a newer take fails the
- * older "sending" ones, so a submission that is no longer sending is simply not promoted.
+ * Saves a finished recording in the student's My Recordings. Starting a newer take fails the older "sending" ones, so
+ * a submission that is no longer sending is simply not saved.
  */
-const promoteSubmission = db.transaction((submission: SubmissionRow, durationMs: number | null): string | null => {
-  const currentId = (
-    db.prepare("SELECT current_submission_id AS id FROM sessions WHERE id = ?").get(submission.session_id) as
-      | { id: string | null }
-      | undefined
-  )?.id ?? null;
-  const nextVersion = (
-    db
-      .prepare("SELECT COALESCE(MAX(version), 0) + 1 AS v FROM submissions WHERE session_id = ?")
-      .get(submission.session_id) as { v: number }
-  ).v;
+const saveSubmission = db.transaction((submission: SubmissionRow, durationMs: number | null): void => {
   const updated = db
     .prepare(
       `UPDATE submissions SET status = 'ready', version = ?, duration_ms = ?, ready_at = ?, error = NULL
        WHERE id = ? AND status = 'sending'`
     )
-    .run(nextVersion, durationMs, Date.now(), submission.id);
+    .run(nextVersion(submission.session_id), durationMs, Date.now(), submission.id);
   if (updated.changes === 0) {
     throw new Error("Superseded before it finished");
   }
-  if (currentId) {
-    db.prepare("UPDATE submissions SET status = 'replaced' WHERE id = ?").run(currentId);
-  }
-  db.prepare("UPDATE sessions SET current_submission_id = ? WHERE id = ?").run(submission.id, submission.session_id);
-  return currentId;
 });
+
+/** Deletes one saved recording and its MP3 (a student submitted it? the submission goes with it). */
+export function deleteRecording(submission: Pick<SubmissionRow, "id" | "recording_id">): void {
+  // The recording row cascades its track and the submission; students.submitted_submission_id is set to NULL.
+  db.prepare("DELETE FROM recordings WHERE id = ?").run(submission.recording_id);
+  fs.rmSync(submissionAudioPath(submission.id), { force: true });
+}
 
 async function encodeSubmission(submissionId: string): Promise<void> {
   const submission = getSubmission(submissionId);
@@ -136,14 +129,8 @@ async function encodeSubmission(submissionId: string): Promise<void> {
     }
     await toSubmissionMp3(wavTrackPath(submission.track_id), output, MAX_EPISODE_SECONDS);
     const meta = await probe(output);
-    const replacedId = promoteSubmission(submission, meta.durationMs);
-    if (replacedId) {
-      fs.rmSync(submissionAudioPath(replacedId), { force: true });
-    }
-    console.log(
-      `[submissions] ${submissionId} is now current for episode ${submission.session_id}` +
-        (replacedId ? ` (replaced ${replacedId})` : "")
-    );
+    saveSubmission(submission, meta.durationMs);
+    console.log(`[submissions] ${submissionId} saved for episode ${submission.session_id}`);
   } catch (err) {
     fs.rmSync(output, { force: true });
     failSubmission(submissionId, err instanceof Error ? err.message : String(err));

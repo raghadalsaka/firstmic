@@ -1,9 +1,19 @@
 import fs from "node:fs";
-import { db, type GroupTakeRow, type GroupTakeStatus, type ParticipantRow, type TrackRow } from "../lib/db.js";
+import {
+  db,
+  type GroupTakeRow,
+  type GroupTakeStatus,
+  type ParticipantRow,
+  type SessionRow,
+  type StudentRow,
+  type TopicRow,
+  type TrackRow,
+} from "../lib/db.js";
 import { newId } from "../lib/ids.js";
 import { GROUP_UPLOAD_TIMEOUT_MS, MAX_EPISODE_SECONDS } from "../lib/config.js";
 import { broadcastGroup, getTake, GROUP_SIZE, groupMembers, openTake, takeControllerId } from "../lib/groups.js";
-import { groupMixPath, groupVoicePath, trackChunksDir, wavTrackPath } from "../lib/storage.js";
+import { groupMixPath, submissionAudioPath, trackChunksDir, wavTrackPath } from "../lib/storage.js";
+import { saveCopy } from "../lib/episodes.js";
 import { enqueue, onTrackSettled } from "./pipeline.js";
 import { groupTakeExport, probe, type MixInput } from "./ffmpeg.js";
 import { removeRecordingFiles, removeTrackMedia } from "./submissions.js";
@@ -199,7 +209,10 @@ export function discardTake(take: GroupTakeRow): boolean {
   return endTake(take, "discarded", ["mixing", "listening", "failed"], "The take was thrown away");
 }
 
-const sendTransaction = db.transaction((take: GroupTakeRow): { version: number; replaced: GroupTakeRow | null } | null => {
+type MixCopies = { studioId: string; topic: TopicRow; members: { student: StudentRow; submissionId: string }[] };
+type SendResult = { version: number; replaced: GroupTakeRow | null };
+
+const sendTransaction = db.transaction((take: GroupTakeRow, copies: MixCopies | null): SendResult | null => {
   const now = Date.now();
   const version = (
     db
@@ -220,12 +233,59 @@ const sendTransaction = db.transaction((take: GroupTakeRow): { version: number; 
     db.prepare("UPDATE group_takes SET status = 'replaced' WHERE id = ?").run(replaced.id);
   }
   db.prepare("UPDATE sessions SET current_take_id = ? WHERE id = ?").run(take.id, take.session_id);
+  if (copies) {
+    for (const member of copies.members) {
+      const withNames = copies.members
+        .filter((other) => other !== member)
+        .map((other) => other.student.name)
+        .join(" & ");
+      saveCopy(copies.studioId, member.student, copies.topic, {
+        submissionId: member.submissionId,
+        durationMs: take.duration_ms,
+        withNames,
+      });
+    }
+  }
   return { version, replaced };
 });
 
-/** Send: hands the mix and both voices to the teacher together, replacing the group's previous sent take. */
+/** Each member's copy of the mix, already on disk; null when the group's topic is gone. */
+function copyMixForMembers(take: GroupTakeRow): MixCopies | null {
+  const session = db.prepare("SELECT * FROM sessions WHERE id = ?").get(take.session_id) as SessionRow;
+  const topic = db.prepare("SELECT * FROM topics WHERE id = ?").get(session.topic_id ?? "") as TopicRow | undefined;
+  if (!topic) {
+    return null;
+  }
+  const students = db
+    .prepare(
+      `SELECT stu.* FROM participants p INNER JOIN students stu ON stu.id = p.student_id
+       WHERE p.session_id = ? ORDER BY p.created_at, p.id`
+    )
+    .all(take.session_id) as StudentRow[];
+  const members = students.map((student) => ({ student, submissionId: newId() }));
+  for (const member of members) {
+    fs.copyFileSync(groupMixPath(take.id), submissionAudioPath(member.submissionId));
+  }
+  return { studioId: session.studio_id, topic, members };
+}
+
+/**
+ * Save for Both: the take becomes the group's saved one, and each member gets their own copy of the mix in My
+ * Recordings. The group sends nothing to the teacher; each student submits a recording from their list, or not.
+ */
 export function sendTake(take: GroupTakeRow): { version: number } | null {
-  const result = sendTransaction(take);
+  if (take.status !== "listening") {
+    return null;
+  }
+  const copies = copyMixForMembers(take);
+  let result: SendResult | null = null;
+  try {
+    result = sendTransaction(take, copies);
+  } finally {
+    if (!result) {
+      copies?.members.forEach((member) => fs.rmSync(submissionAudioPath(member.submissionId), { force: true }));
+    }
+  }
   if (!result) {
     return null;
   }
@@ -233,7 +293,8 @@ export function sendTake(take: GroupTakeRow): { version: number } | null {
     removeRecordingFiles([result.replaced.id], takeTrackIds(result.replaced));
   }
   console.log(
-    `[groups] take ${take.id} sent as version ${result.version}` + (result.replaced ? ` (replaced ${result.replaced.id})` : "")
+    `[groups] take ${take.id} saved as version ${result.version} with a copy for ${copies?.members.length ?? 0} members` +
+      (result.replaced ? ` (replaced ${result.replaced.id})` : "")
   );
   broadcastGroup(take.session_id);
   return { version: result.version };
@@ -279,7 +340,7 @@ async function mixTake(takeId: string): Promise<void> {
   }));
   let kept = false;
   try {
-    await groupTakeExport(inputs, groupMixPath(take.id), trackIds.map(groupVoicePath), take.duration_ms ?? MAX_TAKE_MS);
+    await groupTakeExport(inputs, groupMixPath(take.id), take.duration_ms ?? MAX_TAKE_MS);
     const meta = await probe(groupMixPath(take.id));
     kept =
       db

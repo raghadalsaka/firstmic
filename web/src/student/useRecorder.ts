@@ -12,14 +12,9 @@ export type RecorderPhase =
   | 'recording'
   | 'recorded'
   | 'sending'
-  | 'sent'
   | 'send-failed'
   | 'mic-blocked'
   | 'unsupported'
-
-type EpisodeResponse = {
-  episode: { current: { id: string } | null }
-}
 
 const TICK_MS = 200
 
@@ -30,11 +25,12 @@ export function useRecorder(options: {
   maxSeconds: number
   // The student's sign-in stopped working (new PIN, removed from the class): show the name list again.
   onSignedOut: () => void
+  // The take is saved in My Recordings.
+  onSaved: () => void
 }) {
   const phase = ref<RecorderPhase>('loading')
   const elapsedMs = ref(0)
   const sendPercent = ref(0)
-  const hasSent = ref(false)
   // Not reactive: nothing renders the take itself, only audioUrl and elapsedMs.
   let take: FinishedTake | null = null
   const audioUrl = ref<string | null>(null)
@@ -65,20 +61,6 @@ export function useRecorder(options: {
     wakeLock = null
   }
 
-  // The episode is the student's on every device, so this also shows a recording sent from another one.
-  async function loadHasSent(): Promise<boolean> {
-    try {
-      const episode = await ensureEpisode()
-      const response = await api<EpisodeResponse>('/api/student/episode', { token: episode.token })
-      return response.episode.current !== null
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        saveEpisode(options.classToken, options.topicId, null)
-      }
-      return false
-    }
-  }
-
   async function loadPending(): Promise<FinishedTake | null> {
     const pendingId = loadPendingTake(options.classToken, options.topicId)
     return pendingId ? loadStoredTake(pendingId).catch(() => null) : null
@@ -89,15 +71,14 @@ export function useRecorder(options: {
       phase.value = 'unsupported'
       return
     }
-    const [sent, pending] = await Promise.all([loadHasSent(), loadPending()])
-    hasSent.value = sent
+    const pending = await loadPending()
     if (pending) {
       setTake(pending)
       phase.value = 'recorded'
       return
     }
     savePendingTake(options.classToken, options.topicId, null)
-    phase.value = sent ? 'sent' : 'ready'
+    phase.value = 'ready'
   })
 
   async function record(): Promise<void> {
@@ -152,7 +133,7 @@ export function useRecorder(options: {
   }
 
   async function tryAgain(): Promise<void> {
-    if (phase.value !== 'recorded' && phase.value !== 'sent' && phase.value !== 'send-failed') {
+    if (phase.value !== 'recorded' && phase.value !== 'send-failed') {
       return
     }
     if (take) {
@@ -183,6 +164,7 @@ export function useRecorder(options: {
     }
   }
 
+  /** Uploads the take; the server saves it in My Recordings. */
   async function send(): Promise<void> {
     const current = take
     if (!current || (phase.value !== 'recorded' && phase.value !== 'send-failed')) {
@@ -202,12 +184,13 @@ export function useRecorder(options: {
         saveEpisode(options.classToken, options.topicId, null)
         return attempt()
       })
-      hasSent.value = true
       await discardTake(current).catch(() => undefined)
       savePendingTake(options.classToken, options.topicId, null)
-      phase.value = 'sent'
+      setTake(null)
+      phase.value = 'ready'
+      options.onSaved()
     } catch (err) {
-      console.error('Send failed', err)
+      console.error('Save failed', err)
       phase.value = 'send-failed'
     }
   }
@@ -231,5 +214,5 @@ export function useRecorder(options: {
     }
   })
 
-  return { phase, elapsedMs, maxMs, sendPercent, hasSent, audioUrl, record, stop, tryAgain, send }
+  return { phase, elapsedMs, maxMs, sendPercent, audioUrl, record, stop, tryAgain, send }
 }
