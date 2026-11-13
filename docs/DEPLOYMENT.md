@@ -147,7 +147,8 @@ To redeploy or roll back, run **Publish and deploy** manually with a commit SHA 
 
 ## Sign in and create a class
 
-1. Open `https://<your domain>` and click **Sign In** (top right), then pick your Google account.
+1. Open `https://<your domain>/teacher/sign-in` (nothing in the app links to it, so keep this link) and click
+   **Sign In with Google**, then pick your Google account.
 2. Create a class and add topics. The class appears on the home page, where students tap it.
    **Copy Link** gives a direct link too.
 
@@ -188,7 +189,8 @@ Set these in `/opt/firstmic/.env`; `compose.yml` passes them to the container.
 ## Checklist after deploying
 
 - [ ] `https://<domain>` loads (Cloudflare's certificate).
-- [ ] **Sign In** opens Google's account picker, and after picking an account you land on "Your classes".
+- [ ] The home page has no sign-in button. `/teacher/sign-in` shows **Sign In with Google**, which opens Google's
+      account picker, and after picking an account you land on "Your classes".
 - [ ] A class you create shows up on the home page.
 - [ ] A phone on mobile data (not the school Wi-Fi) can open the class link, record, listen, and send.
 - [ ] The recording appears in the teacher dashboard, plays, and downloads as an MP3.

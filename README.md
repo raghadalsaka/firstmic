@@ -8,7 +8,7 @@ Recordings stop automatically at 3 minutes; there is no minimum. Every saved rec
 don't want, and taps **Submit to Teacher** on the one they like best. Each student submits one recording for the class
 and can change it until the class deadline; the submitted one is marked **✓ Submitted**.
 
-**Teacher:** sign in with Google (top right of the home page) to a private dashboard to create a class, manage its
+**Teacher:** sign in with Google at `/teacher/sign-in` (nothing in the app links there; teachers keep the link) to a private dashboard to create a class, manage its
 topics and students, copy the class link, and set a **submission deadline**. After the deadline students can still
 record, but can't submit or change their submission. The dashboard lists each student's submitted recording, to play or
 download as an MP3, and who hasn't submitted yet. **Delete Class** removes the class for good, with its topics, students

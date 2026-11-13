@@ -28,7 +28,6 @@ await page.goto(base)
 const steps = [
   ['home', async () => {
     await page.getByRole('link', { name: 'WebKit Class' }).waitFor()
-    await page.getByRole('button', { name: 'Sign In' }).waitFor()
   }],
   ['names', async () => {
     await page.getByRole('link', { name: 'WebKit Class' }).click()

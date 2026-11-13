@@ -23,20 +23,26 @@ const browser = await chromium.launch({
   ],
 })
 
-// ---- Teacher signs in with Google from the home page and sets up a class ----
+// ---- Teacher signs in with Google from the sign-in link and sets up a class ----
 const teacherCtx = await browser.newContext()
 await teacherCtx.route('https://accounts.google.com/gsi/client', (route) =>
   route.fulfill({ contentType: 'text/javascript', body: gisStub(`raghad${Date.now()}@example.com`) }),
 )
 const teacher = await teacherCtx.newPage()
-await teacher.goto(`${base}/teacher/classes/not-a-class`)
+// Signed out, the home page has no sign-in, and teacher pages go to the home page instead of a sign-in screen
+for (const path of ['/', '/teacher', '/teacher/classes/not-a-class']) {
+  await teacher.goto(`${base}${path}`)
+  await teacher.waitForURL(`${base}/`)
+  await teacher.getByRole('heading', { name: 'Pick your class' }).waitFor()
+  assert.equal(await teacher.getByRole('button', { name: /Sign In/ }).count(), 0, `${path}: no sign-in button`)
+  assert.equal(await teacher.getByText('Teacher sign in').count(), 0, `${path}: no sign-in screen`)
+}
+await shot(teacher, 'home-signed-out')
+await teacher.goto(`${base}/teacher/sign-in`)
 await teacher.getByRole('heading', { name: 'Teacher sign in' }).waitFor()
 await shot(teacher, 'login-screen')
-await teacher.goto(`${base}/teacher`)
+await teacher.getByRole('button', { name: 'Sign In with Google' }).click()
 await teacher.waitForURL(`${base}/`)
-await teacher.getByRole('heading', { name: 'Pick your class' }).waitFor()
-await shot(teacher, 'home-signed-out')
-await teacher.getByRole('button', { name: 'Sign In' }).click()
 await teacher.getByRole('heading', { name: 'Your classes' }).waitFor()
 await teacher.getByRole('button', { name: 'Sign Out' }).waitFor()
 assert.equal(teacher.url(), `${base}/`)

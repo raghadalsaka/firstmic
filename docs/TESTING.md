@@ -72,7 +72,8 @@ isn't `firstmic-e2e`.
 
 **`solo-e2e.mjs`** drives Chromium with a fake microphone playing a 440 Hz tone:
 
-1. The teacher clicks **Sign In** on the home page, creates a class and topics, and copies the class link.
+1. Signed out, the home page and teacher pages show no sign-in. The teacher opens `/teacher/sign-in`, clicks
+   **Sign In with Google**, creates a class and topics, and copies the class link.
 2. The student taps the class on the home page, enters a name, picks a topic, records, stops and listens back.
 3. Try Again works.
 4. The take survives a page reload.
@@ -137,7 +138,7 @@ Android Chrome and real networks. Use the deployed HTTPS site. The microphone do
 
 **Teacher, on a laptop:**
 
-1. Open `https://<domain>`, click **Sign In** (top right) and pick your Google account.
+1. Open `https://<domain>/teacher/sign-in`, click **Sign In with Google** and pick your Google account.
 2. Create a class, for example "Test class", add two topics and a test student (note the PIN).
 3. Open the home page and check "Test class" is listed.
 
