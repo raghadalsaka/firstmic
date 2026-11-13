@@ -34,12 +34,13 @@ export function removeTrackMedia(trackId: string): void {
 }
 
 // A student's episodes include the groups they're a member of, so removing them never leaves their voice behind.
-const EPISODES_IN_SCOPE: Record<"id" | "student_id" | "topic_id", string> = {
+const EPISODES_IN_SCOPE = {
   id: "SELECT id FROM sessions WHERE id = @value",
+  studio_id: "SELECT id FROM sessions WHERE studio_id = @value",
   topic_id: "SELECT id FROM sessions WHERE topic_id = @value",
   student_id:
     "SELECT id FROM sessions WHERE student_id = @value UNION SELECT session_id FROM participants WHERE student_id = @value",
-};
+} satisfies Record<string, string>;
 
 /** Everything on disk for these group takes and tracks (solo or group): mixes, voice MP3s and intermediates. */
 export function removeRecordingFiles(takeIds: readonly string[], trackIds: readonly string[]): void {
@@ -57,7 +58,7 @@ export function removeRecordingFiles(takeIds: readonly string[], trackIds: reado
  * `alsoDelete` removes in the same transaction, then the episodes' files, and closes their live rooms.
  */
 export function deleteEpisodes(
-  scope: "id" | "student_id" | "topic_id",
+  scope: keyof typeof EPISODES_IN_SCOPE,
   value: string,
   alsoDelete?: () => void
 ): { episodes: number; recordings: number } {

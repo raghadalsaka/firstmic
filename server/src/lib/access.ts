@@ -34,7 +34,7 @@ export function sessionForMember(sessionId: string, userId: string): SessionRow 
   return row ?? null;
 }
 
-type ClassMember = { user: UserRow; studio: StudioRow };
+type ClassMember = { user: UserRow; studio: StudioRow & { role: StudioRole } };
 
 /** Signed-in teacher who is a member of the class named by :classId; replies 401/404 otherwise. */
 export function requireClassMember(req: FastifyRequest, reply: FastifyReply): ClassMember | null {

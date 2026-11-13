@@ -11,7 +11,8 @@ and can change it until the class deadline; the submitted one is marked **✓ Su
 **Teacher:** sign in with Google (top right of the home page) to a private dashboard to create a class, manage its
 topics and students, copy the class link, and set a **submission deadline**. After the deadline students can still
 record, but can't submit or change their submission. The dashboard lists each student's submitted recording, to play or
-download as an MP3, and who hasn't submitted yet.
+download as an MP3, and who hasn't submitted yet. **Delete Class** removes the class for good, with its topics, students
+and every recording.
 
 **Two-person podcasts:** after picking a topic, a student chooses **With a Partner** and gets a 6-digit group PIN
 to share (there is no invite link). A classmate taps **Join a Partner** and types it; once two students are in, the

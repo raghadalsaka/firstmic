@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import AudioPlayer from '../components/AudioPlayer.vue'
 import StudentBadge from '../components/StudentBadge.vue'
 import { api, ApiError, errorMessage } from '../services/api'
@@ -28,6 +29,7 @@ type ClassDetail = {
 }
 
 const props = defineProps<{ classId: string }>()
+const router = useRouter()
 
 const detail = ref<ClassDetail | null>(null)
 const loadError = ref<string | null>(null)
@@ -165,6 +167,22 @@ function deleteTopic(topic: Topic): void {
     return
   }
   void run(() => api(`/api/teacher/topics/${topic.id}`, { method: 'DELETE' }))
+}
+
+async function deleteClass(name: string): Promise<void> {
+  const message =
+    `Delete the class "${name}"? Its topics, students, PINs and every recording will be deleted, ` +
+    "and the class link stops working. This can't be undone."
+  if (!window.confirm(message)) {
+    return
+  }
+  actionError.value = null
+  try {
+    await api(`/api/teacher/classes/${props.classId}`, { method: 'DELETE' })
+    await router.push('/')
+  } catch (err) {
+    actionError.value = errorMessage(err, 'The class was not deleted. Try again.')
+  }
 }
 
 function saveDeadline(deadline: number | null): void {
@@ -313,6 +331,14 @@ function deleteSubmission(item: Submission): void {
             </div>
           </li>
         </ul>
+      </section>
+
+      <section class="panel flex flex-col gap-3 p-5" data-testid="delete-class">
+        <h2 class="font-display text-xl font-extrabold">Delete class</h2>
+        <p class="text-ink-soft">
+          Deletes this class with all its topics, students and recordings, for good. Download any recordings you want to keep first.
+        </p>
+        <button class="btn btn-rec btn-small self-start" @click="deleteClass(detail.class.name)">Delete Class</button>
       </section>
     </template>
   </main>

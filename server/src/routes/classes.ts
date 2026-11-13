@@ -153,6 +153,24 @@ export function registerClassRoutes(app: FastifyInstance): void {
     return { ok: true };
   });
 
+  // Deletes the class and everything in it: topics, students and their PINs, and every recording and its files.
+  app.delete("/api/teacher/classes/:classId", async (req, reply) => {
+    const member = requireClassMember(req, reply);
+    if (!member) {
+      return;
+    }
+    const { user, studio } = member;
+    if (studio.role !== "owner") {
+      return reply.code(403).send({ error: "Only the teacher who made this class can delete it" });
+    }
+    // The class row cascades its topics, students (and their sign-ins) and teacher memberships.
+    const { episodes, recordings } = deleteEpisodes("studio_id", studio.id, () => {
+      db.prepare("DELETE FROM studios WHERE id = ?").run(studio.id);
+    });
+    req.log.info({ classId: studio.id, userId: user.id, episodes, recordings }, "class deleted");
+    return { ok: true };
+  });
+
   // After the deadline students can't submit or change their submission; they can still record and listen.
   app.put("/api/teacher/classes/:classId/deadline", async (req, reply) => {
     const member = requireClassMember(req, reply);

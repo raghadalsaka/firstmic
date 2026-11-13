@@ -1,9 +1,11 @@
-// API smoke test for First Mic phase one. Usage: node api-smoke.mjs <baseUrl> <fakeGooglePort> <toneWebmPath>
+// API smoke test for First Mic phase one. Usage: node api-smoke.mjs <baseUrl> <fakeGooglePort> <toneWebmPath> <container>
 import fs from 'node:fs'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { fakeToken, startFakeGoogle } from './fake-google.mjs'
 
-const [base = 'http://localhost:18101', googlePort = '18199', tonePath = './media/tone.webm'] = process.argv.slice(2)
+const [base = 'http://localhost:18101', googlePort = '18199', tonePath = './media/tone.webm', container = 'firstmic-e2e'] =
+  process.argv.slice(2)
 const tone = fs.readFileSync(tonePath)
 const fakeGoogle = await startFakeGoogle(Number(googlePort))
 let cookie = ''
@@ -280,6 +282,32 @@ assert.equal((await myRecordings()).submittedId, null)
 assert.equal((await json('/api/student/episode', { token: aliEpisode.data.token })).status, 401)
 assert.equal((await json(`/api/teacher/topics/${topicId}`, { method: 'DELETE' })).status, 404)
 step('deleting a topic deletes every recording made for it, submitted ones included')
+
+// ---- Deleting the class clears everything in it ----
+const t3 = await json(`/api/teacher/classes/${classId}/topics`, { body: { title: 'My holiday' } })
+const lastEpisode = await json(`/api/class/${currentClassToken}/episodes`, { token: aliLogin, body: { topicId: t3.data.topic.id } })
+assert.equal(lastEpisode.status, 200)
+const last = await sendTake(lastEpisode.data.token, tone)
+assert.equal(last.status, 'ready')
+assert.equal((await submit(last.submissionId)).status, 200)
+const filesOnDisk = () => execFileSync('docker', ['exec', container, 'ls', '/data/submissions', '/data/chunks', '/data/media']).toString()
+const classFiles = new RegExp(`${last.submissionId}|${last.trackId}`)
+assert.match(filesOnDisk(), classFiles)
+const teacherCookie = cookie
+cookie = ''
+assert.equal((await json('/api/auth/google', { body: { accessToken: fakeToken('other@example.com') } })).status, 200)
+assert.equal((await json(`/api/teacher/classes/${classId}`, { method: 'DELETE' })).status, 404, "another teacher can't delete it")
+cookie = teacherCookie
+assert.equal((await json(`/api/teacher/classes/${classId}`, { method: 'DELETE' })).status, 200)
+assert.equal((await json(`/api/teacher/classes/${classId}`)).status, 404)
+assert.ok(!(await json('/api/teacher/classes')).data.classes.some((c) => c.id === classId))
+assert.equal((await json(`/api/class/${currentClassToken}`)).status, 404)
+assert.ok(!(await fetch(`${base}/api/classes`).then((r) => r.json())).classes.some((c) => c.classToken === currentClassToken))
+assert.equal((await call(`/api/teacher/submissions/${last.submissionId}/audio`)).status, 404)
+assert.equal((await json('/api/student/episode', { token: lastEpisode.data.token })).status, 401)
+assert.doesNotMatch(filesOnDisk(), classFiles, 'its recording files are removed from disk')
+assert.equal((await json(`/api/teacher/classes/${classId}`, { method: 'DELETE' })).status, 404)
+step('deleting the class removes its topics, students, recordings and files; the class link stops working')
 
 fakeGoogle.close()
 console.log(`\nall ${passed} steps passed`)

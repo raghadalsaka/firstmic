@@ -299,6 +299,26 @@ for (const [label, device] of [['iphone13', devices['iPhone 13']], ['pixel7', de
   ok(`${label} viewport: ready/recording/recorded fit without horizontal scroll`)
 }
 
+// ---- The teacher deletes the class: Cancel keeps it, OK clears it ----
+const classUrl = teacher.url()
+const deleteClass = teacher.getByRole('button', { name: 'Delete Class' })
+teacher.once('dialog', (dialog) => void dialog.dismiss())
+await deleteClass.click()
+assert.equal(teacher.url(), classUrl, 'Cancel keeps the class')
+let deleteMessage = ''
+teacher.once('dialog', (dialog) => {
+  deleteMessage = dialog.message()
+  void dialog.accept()
+})
+await deleteClass.click()
+await teacher.getByRole('heading', { name: 'Your classes' }).waitFor()
+assert.match(deleteMessage, /Room 12B[\s\S]*every recording/)
+assert.equal(await teacher.getByRole('link', { name: /Room 12B/ }).count(), 0)
+assert.equal((await teacherCtx.request.get(`${base}${v2Src}`)).status(), 404, 'the submitted recording is gone')
+assert.equal((await teacherCtx.request.get(classUrl.replace('/teacher/classes/', '/api/teacher/classes/'))).status(), 404)
+await shot(teacher, 'teacher-class-deleted')
+ok('the teacher deletes the class (Cancel keeps it); its recordings are gone and it leaves the class list')
+
 await browser.close()
 fakeGoogle.close()
 console.log(`\nall ${n} steps passed`)

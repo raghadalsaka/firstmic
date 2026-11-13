@@ -30,8 +30,8 @@ cd e2e
 npm install
 npx playwright install chromium webkit
 node make-media.mjs     # makes test tones with the container's ffmpeg
-node api-smoke.mjs      # 21 API steps
-node solo-e2e.mjs       # 12 browser steps, screenshots in e2e/out/
+node api-smoke.mjs      # 22 API steps
+node solo-e2e.mjs       # 14 browser steps, screenshots in e2e/out/
 node webkit-layout.mjs  # Safari-engine layout of the home page and student screens
 node group-smoke.mjs    # 15 API steps for two-person podcasts, with two live-call connections
 node group-e2e.mjs      # 9 browser steps: two browsers, each with its own fake microphone
@@ -47,8 +47,9 @@ The tests never talk to Google:
 - The browser test replaces Google's sign-in script with a stub that "picks" a test account.
 
 Use a fresh container for each run of `api-smoke.mjs`, because it signs in with a fixed email.
-`group-smoke.mjs` and `group-e2e.mjs` check audio inside the container with `docker exec`, so pass the container
-name as the third argument if it isn't `firstmic-e2e`.
+`group-smoke.mjs` and `group-e2e.mjs` check audio inside the container with `docker exec`, and `api-smoke.mjs` checks
+that deleted files are gone, so pass the container name (the third argument; the fourth for `api-smoke.mjs`) if it
+isn't `firstmic-e2e`.
 
 **`api-smoke.mjs`** checks:
 
@@ -66,6 +67,8 @@ name as the third argument if it isn't `firstmic-e2e`.
 - one student can't see, submit, delete or upload into another student's recordings
 - a new PIN signing the student out on every device, upload tokens included, while their recordings stay
 - teacher playback with seeking, the download filename, and deleting a submission, a student or a topic
+- deleting the class: another teacher can't; afterwards its link, recordings and sign-ins are gone and its MP3 and
+  recording files are removed from disk
 
 **`solo-e2e.mjs`** drives Chromium with a fake microphone playing a 440 Hz tone:
 
@@ -80,6 +83,8 @@ name as the third argument if it isn't `firstmic-e2e`.
 9. The teacher sets a deadline in the past: the student's Submit buttons disappear. Without a deadline the student
    submits the second topic and deletes the first.
 10. The student screens fit iPhone 13 and Pixel 7 sizes without sideways scrolling.
+11. The teacher taps **Delete Class**: Cancel keeps it; OK goes back to the class list without it, and its recordings
+    are gone.
 
 To check that the sent audio holds the tone:
 
@@ -172,6 +177,8 @@ Android Chrome and real networks. Use the deployed HTTPS site. The microphone do
 - **Teacher clicks New Link.** Expected: the old class link shows "This link doesn't work".
 - **Teacher clicks Delete** on a submission. Expected: it disappears from the dashboard and from the student's My
   Recordings, and the student can submit another.
+- **Teacher clicks Delete Class** (do this last, on a test class). Expected: back to the class list without it; the
+  class is gone from the home page and its link shows "not found" on the phone.
 
 ## Manual two-person test on real devices
 
