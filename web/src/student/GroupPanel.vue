@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import AudioPlayer from '../components/AudioPlayer.vue'
+import OnAirBadge from '../components/OnAirBadge.vue'
 import StudentBadge from '../components/StudentBadge.vue'
 import { SUGGESTED_MIN_SECONDS } from '../config'
 import { formatClock } from '../utils/format'
@@ -113,10 +114,7 @@ const callText = computed(() => {
     </template>
 
     <template v-else-if="current === 'recording'">
-      <p class="flex items-center gap-2 font-bold text-rec">
-        <span class="size-3 animate-rec-pulse rounded-full bg-rec" aria-hidden="true"></span>
-        Recording
-      </p>
+      <OnAirBadge />
       <button v-if="view?.canControl" class="btn btn-primary btn-mic wave" :disabled="busy" @click="room.stop">Stop</button>
       <p v-else class="max-w-sm text-lg text-ink-soft">{{ controllerName }} is in charge. {{ controllerName }} taps Stop.</p>
     </template>

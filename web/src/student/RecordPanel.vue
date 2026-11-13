@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import AudioPlayer from '../components/AudioPlayer.vue'
+import OnAirBadge from '../components/OnAirBadge.vue'
 import { SUGGESTED_MIN_SECONDS } from '../config'
 import { formatClock } from '../utils/format'
 import { useRecorder } from './useRecorder'
@@ -65,10 +66,7 @@ const hitLimit = computed(() => elapsedMs.value >= maxMs - 250)
     </template>
 
     <template v-else-if="phase === 'recording'">
-      <p class="flex items-center gap-2 font-bold text-rec">
-        <span class="size-3 animate-rec-pulse rounded-full bg-rec" aria-hidden="true"></span>
-        Recording
-      </p>
+      <OnAirBadge />
       <button class="btn btn-primary btn-mic wave" @click="stop">Stop</button>
     </template>
 

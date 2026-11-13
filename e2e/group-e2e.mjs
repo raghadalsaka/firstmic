@@ -177,11 +177,15 @@ await ali.getByRole('button', { name: 'Stop' }).waitFor()
 await sara.getByText('Ali is in charge. Ali taps Stop.').waitFor()
 assert.equal(await sara.getByRole('button', { name: 'Stop' }).count(), 0)
 await ali.waitForTimeout(4000)
+for (const page of [ali, sara]) {
+  assert.equal((await page.getByTestId('on-air').innerText()).trim().toUpperCase(), 'ON AIR')
+}
 await fits(ali, 'ali-4-recording')
 await fits(sara, 'sara-3-recording-partner')
 await ali.getByRole('button', { name: 'Stop' }).click()
 for (const page of [ali, sara]) {
   await page.getByTestId('mix-player').waitFor({ timeout: 60_000 })
+  assert.equal(await page.getByTestId('on-air').count(), 0, 'On Air is gone after Stop')
 }
 await sara.getByText('Ali chooses Save for Both or Try Again.').waitFor()
 assert.equal(await sara.getByRole('button', { name: 'Save for Both' }).count(), 0)
