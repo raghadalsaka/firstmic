@@ -41,6 +41,16 @@ export function guideSections(guide: TopicGuide | null | undefined, mode: GuideM
   })
 }
 
+// Desktop grid while the guide is open: title across the top, guide box on the left, Hide button and controls on the right.
+export const GUIDE_SPLIT: Record<'layout' | 'title' | 'guide' | 'toggle' | 'panel' | 'controls', string> = {
+  layout: 'lg:grid lg:grid-cols-[minmax(0,1fr)_24rem] lg:grid-rows-[auto_auto_minmax(0,1fr)] lg:items-start lg:gap-x-12',
+  title: 'lg:col-span-2',
+  guide: 'lg:contents',
+  toggle: 'lg:col-start-2 lg:row-start-2 lg:justify-self-center',
+  panel: 'lg:col-start-1 lg:row-span-2 lg:row-start-2 lg:max-h-none lg:min-h-0 lg:self-stretch lg:p-5',
+  controls: 'lg:col-start-2 lg:row-start-3 lg:flex lg:flex-col lg:items-center',
+}
+
 export function hasGuide(guide: TopicGuide | null | undefined): boolean {
   return GUIDE_KEYS.some((key) => Boolean(guide?.[key]?.trim()))
 }

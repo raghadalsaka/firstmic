@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, useId } from 'vue'
-import { guideSections, type GuideMode, type TopicGuide } from '../utils/guide'
+import { GUIDE_SPLIT, guideSections, type GuideMode, type TopicGuide } from '../utils/guide'
 
 const props = defineProps<{
   guide: TopicGuide | null | undefined
@@ -19,12 +19,13 @@ const sections = computed(() => guideSections(props.guide, props.mode))
   <div
     v-if="sections.length > 0"
     class="flex w-full max-w-sm flex-col items-center gap-3"
-    :class="[compact ? '-mt-3' : '', compact && open ? 'min-h-31' : '']"
+    :class="[compact ? '-mt-3' : '', compact && open ? 'min-h-31' : '', open ? GUIDE_SPLIT.guide : '']"
     data-testid="podcast-guide"
   >
     <button
       type="button"
       class="btn btn-small shrink-0"
+      :class="GUIDE_SPLIT.toggle"
       :aria-expanded="open"
       :aria-controls="panelId"
       @click="open = !open"
@@ -35,7 +36,7 @@ const sections = computed(() => guideSections(props.guide, props.mode))
       v-show="open"
       :id="panelId"
       class="flex w-full flex-col gap-3 rounded-tile border-3 border-rule bg-card text-start"
-      :class="compact ? 'max-h-64 min-h-18 overflow-y-auto overscroll-contain p-3' : 'p-4'"
+      :class="[compact ? 'max-h-64 min-h-18 overflow-y-auto overscroll-contain p-3' : 'p-4', GUIDE_SPLIT.panel]"
       role="region"
       aria-label="Podcast Guide"
       :tabindex="compact ? 0 : undefined"

@@ -315,8 +315,8 @@ await sara.goto(classLink)
 await sara.getByRole('button', { name: 'Sara' }).click()
 await sara.getByLabel('Type your PIN').fill(saraPin)
 await sara.getByRole('button', { name: 'Next' }).click()
-const noSideScroll = async (label) => {
-  const overflow = await sara.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+const noSideScroll = async (label, page = sara) => {
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
   assert.ok(overflow <= 0, `${label}: horizontal overflow ${overflow}px`)
 }
 
@@ -429,6 +429,65 @@ await sara.getByRole('button', { name: 'Try Again' }).click()
 await sara.getByRole('button', { name: 'Record' }).waitFor()
 await guideCtx.close()
 ok(`at 375x667 with the guide open, Record and then Stop and the timer are fully on screen (guide box ${Math.round(guideBoxHeight)}px, scrolls inside)`)
+
+// ---- Desktop: topics and recordings in two columns; an open guide becomes the left column ----
+const deskViewport = { width: 1280, height: 800 }
+const desk = await (await browser.newContext({ viewport: deskViewport, permissions: ['microphone'] })).newPage()
+await desk.goto(classLink)
+await desk.getByRole('button', { name: 'Sara' }).click()
+await desk.getByLabel('Type your PIN').fill(saraPin)
+await desk.getByRole('button', { name: 'Next' }).click()
+const topicBoxes = await Promise.all(['My favourite animal', 'A day at school'].map((name) => desk.getByRole('button', { name }).boundingBox()))
+assert.equal(Math.round(topicBoxes[0].y), Math.round(topicBoxes[1].y), `topics sit side by side: ${JSON.stringify(topicBoxes)}`)
+await shot(desk, 'desktop-1-topics')
+
+const guideBeside = async (target, label) => {
+  const [region, box] = await Promise.all([
+    desk.getByRole('region', { name: 'Podcast Guide' }).boundingBox(),
+    desk.getByRole('button', { name: target }).boundingBox(),
+  ])
+  assert.ok(region.x + region.width <= box.x, `${label}: the guide is left of ${target}: ${JSON.stringify({ region, box })}`)
+  assert.ok(box.y >= 0 && box.y + box.height <= deskViewport.height, `${label}: ${target} is on screen: ${JSON.stringify(box)}`)
+  return region
+}
+await desk.getByRole('button', { name: 'My Winter Style' }).click()
+await toggleGuide(desk, true)
+assert.deepEqual(await shownSections(desk), ['prompt', 'solo', 'partner', 'language'])
+await guideBeside('On My Own', 'choose')
+await shot(desk, 'desktop-2-choose-open')
+await desk.getByRole('button', { name: 'On My Own' }).click()
+await desk.getByRole('button', { name: 'Record' }).waitFor()
+assert.equal(await guideButton(desk).getAttribute('aria-expanded'), 'false', 'collapsed on desktop too')
+await toggleGuide(desk, true)
+await guideBeside('Record', 'ready')
+await desk.getByRole('button', { name: 'Record' }).click()
+await desk.getByRole('button', { name: 'Stop' }).waitFor()
+const deskTicks = []
+let deskRegion = null
+for (let i = 0; i < 4; i++) {
+  await desk.waitForTimeout(500)
+  await toggleGuide(desk, i % 2 === 1)
+  deskTicks.push(await clockSeconds(desk))
+  assert.equal(await desk.getByTestId('on-air').count(), 1, 'still recording')
+  if (i % 2 === 1) {
+    deskRegion = await guideBeside('Stop', `recording, toggle ${i + 1}`)
+    const timer = await desk.getByRole('timer').boundingBox()
+    assert.ok(timer.y >= 0 && timer.y + timer.height <= deskViewport.height, `the timer is on screen: ${JSON.stringify(timer)}`)
+  }
+}
+assert.ok(deskTicks.every((t, i) => i === 0 || t >= deskTicks[i - 1]) && deskTicks.at(-1) - deskTicks[0] >= 1, `the timer kept running: ${deskTicks}`)
+assert.ok(deskRegion.height > 300, `the guide uses the column height, not the phone box: ${Math.round(deskRegion.height)}px`)
+await shot(desk, 'desktop-3-recording-open')
+await desk.getByRole('button', { name: 'Stop' }).click()
+await desk.getByRole('button', { name: 'Save' }).click()
+const cards = desk.getByTestId('my-recording')
+await cards.nth(1).waitFor({ timeout: 60_000 })
+const [firstCard, secondCard] = await Promise.all([cards.nth(0).boundingBox(), cards.nth(1).boundingBox()])
+assert.equal(Math.round(firstCard.y), Math.round(secondCard.y), `recordings sit side by side: ${JSON.stringify([firstCard, secondCard])}`)
+await noSideScroll('desktop recordings', desk)
+await shot(desk, 'desktop-4-recordings')
+await desk.context().close()
+ok(`at 1280x800, topics and recordings sit in two columns; the open guide is a ${Math.round(deskRegion.height)}px left column beside Record/Stop, and toggling it while recording keeps the timer going (${deskTicks.join(', ')}s)`)
 
 // ---- Layout: no horizontal scroll on phones ----
 for (const [label, device] of [['iphone13', devices['iPhone 13']], ['pixel7', devices['Pixel 7']]]) {

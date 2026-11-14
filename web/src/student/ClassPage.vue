@@ -6,7 +6,7 @@ import StudentBadge from '../components/StudentBadge.vue'
 import { PIN_LENGTH } from '../config'
 import { api, ApiError, errorMessage } from '../services/api'
 import type { PublicStudent } from '../types/roster'
-import type { TopicGuide } from '../utils/guide'
+import { GUIDE_SPLIT, type TopicGuide } from '../utils/guide'
 import { isPin } from '../utils/roster'
 import { classPath } from '../utils/slug'
 import type { GroupAccess } from '../group/types'
@@ -39,6 +39,7 @@ const groupBusy = ref(false)
 const notice = ref('')
 const showingRecordings = ref(false)
 const fitScreen = ref(false)
+const guideOpen = ref(false)
 
 const pinComplete = computed(() => isPin(pin.value))
 const groupPinComplete = computed(() => isPin(groupPin.value))
@@ -129,6 +130,7 @@ function openRecordings(): void {
 
 function pickTopic(item: Topic): void {
   notice.value = ''
+  guideOpen.value = false
   topic.value = item
 }
 
@@ -178,7 +180,7 @@ async function groupGone(): Promise<void> {
 
 <template>
   <main
-    class="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+    class="mx-auto flex w-full max-w-xl flex-col lg:max-w-4xl gap-6 px-4 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
     :class="fitScreen ? 'h-dvh' : 'min-h-dvh'"
   >
     <header class="flex items-center justify-between gap-3">
@@ -228,7 +230,7 @@ async function groupGone(): Promise<void> {
       <p v-if="info.students.length === 0" class="panel p-6 text-center text-ink-soft">
         Your teacher hasn't added your name yet. Check back soon.
       </p>
-      <ul class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <ul class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <li v-for="student in info.students" :key="student.id">
           <button class="btn h-full w-full flex-col py-3" @click="pick(student)">
             <StudentBadge :student="student" size="md" />
@@ -297,39 +299,47 @@ async function groupGone(): Promise<void> {
       </p>
       <p v-if="notice" class="alert-bad" role="status">{{ notice }}</p>
       <button class="btn btn-good btn-large w-full" @click="openRecordings">My Recordings</button>
-      <button
-        v-for="item in info.topics"
-        :key="item.id"
-        class="btn btn-large w-full justify-start text-left"
-        dir="auto"
-        @click="pickTopic(item)"
-      >
-        {{ item.title }}
-      </button>
+      <div class="grid gap-4 lg:grid-cols-2">
+        <button
+          v-for="item in info.topics"
+          :key="item.id"
+          class="btn btn-large w-full justify-start text-left"
+          dir="auto"
+          @click="pickTopic(item)"
+        >
+          {{ item.title }}
+        </button>
+      </div>
       <div class="mt-4 flex flex-col items-center gap-3 border-t-3 border-rule pt-6 text-center">
         <p class="text-ink-soft">Did a partner give you a group PIN?</p>
         <button class="btn" @click="startJoining">Join a Partner</button>
       </div>
     </section>
 
-    <section v-else-if="!recordAlone" class="flex flex-col items-center gap-5 text-center">
-      <div>
+    <section
+      v-else-if="!recordAlone"
+      class="flex flex-col items-center gap-5 text-center"
+      :class="guideOpen ? GUIDE_SPLIT.layout : ''"
+    >
+      <div :class="GUIDE_SPLIT.title">
         <p class="text-ink-soft">Your topic</p>
         <h1 class="font-display text-3xl font-extrabold" dir="auto">{{ topic.title }}</h1>
       </div>
-      <PodcastGuide :guide="topic.guide" mode="all" />
-      <p class="text-lg font-semibold">How do you want to record?</p>
-      <div class="flex w-full max-w-sm flex-col gap-4">
-        <button class="btn btn-primary btn-large" @click="recordAlone = true">On My Own</button>
-        <button class="btn btn-large" :disabled="groupBusy" @click="openGroup('groups', { topicId: topic.id })">
-          {{ groupBusy ? 'Opening…' : 'With a Partner' }}
+      <PodcastGuide v-model:open="guideOpen" :guide="topic.guide" mode="all" />
+      <div class="contents gap-5" :class="guideOpen ? GUIDE_SPLIT.controls : ''">
+        <p class="text-lg font-semibold">How do you want to record?</p>
+        <div class="flex w-full max-w-sm flex-col gap-4">
+          <button class="btn btn-primary btn-large" @click="recordAlone = true">On My Own</button>
+          <button class="btn btn-large" :disabled="groupBusy" @click="openGroup('groups', { topicId: topic.id })">
+            {{ groupBusy ? 'Opening…' : 'With a Partner' }}
+          </button>
+        </div>
+        <p class="max-w-sm text-ink-soft">With a partner, you get a group PIN to share. You talk live and record one podcast together.</p>
+        <p v-if="groupError" class="alert-bad max-w-sm" role="alert">{{ groupError }}</p>
+        <button class="-my-2 py-2 text-base font-semibold text-ink-soft underline underline-offset-4" @click="backToTopics">
+          Change topic
         </button>
       </div>
-      <p class="max-w-sm text-ink-soft">With a partner, you get a group PIN to share. You talk live and record one podcast together.</p>
-      <p v-if="groupError" class="alert-bad max-w-sm" role="alert">{{ groupError }}</p>
-      <button class="-my-2 py-2 text-base font-semibold text-ink-soft underline underline-offset-4" @click="backToTopics">
-        Change topic
-      </button>
     </section>
 
     <RecordPanel

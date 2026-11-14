@@ -114,41 +114,43 @@ onUnmounted(() => Object.values(audioUrls.value).forEach((url) => URL.revokeObje
         No recordings yet. Pick a topic and record one.
       </p>
 
-      <article
-        v-for="item in data.recordings"
-        :key="item.id"
-        class="flex flex-col gap-3 rounded-tile border-3 p-4"
-        :class="item.id === data.submittedId ? 'border-good' : 'border-rule'"
-        data-testid="my-recording"
-      >
-        <div class="flex items-start justify-between gap-3">
-          <h2 class="font-display text-xl font-extrabold" dir="auto">{{ item.topicTitle ?? 'Topic removed' }}</h2>
-          <span
-            v-if="item.id === data.submittedId"
-            class="shrink-0 rounded-full bg-good-soft px-3 py-0.5 text-base font-bold text-good"
-          >
-            ✓ Submitted
-          </span>
-        </div>
-        <p class="text-ink-soft" dir="auto">{{ describe(item) }}</p>
-        <AudioPlayer v-if="audioUrls[item.id]" :src="audioUrls[item.id] ?? ''" :duration-ms="item.durationMs" />
-        <div class="flex flex-wrap gap-3">
-          <button v-if="!audioUrls[item.id]" class="btn btn-small" :disabled="busyId === item.id" @click="listen(item)">
-            Listen
-          </button>
-          <button
-            v-if="item.id !== data.submittedId && !closed"
-            class="btn btn-good btn-small"
-            :disabled="busyId === item.id"
-            @click="submit(item)"
-          >
-            Submit to Teacher
-          </button>
-          <button v-if="item.id !== data.submittedId" class="btn btn-small" :disabled="busyId === item.id" @click="remove(item)">
-            Delete
-          </button>
-        </div>
-      </article>
+      <div class="grid gap-5 lg:grid-cols-2 lg:items-start">
+        <article
+          v-for="item in data.recordings"
+          :key="item.id"
+          class="flex flex-col gap-3 rounded-tile border-3 p-4"
+          :class="item.id === data.submittedId ? 'border-good' : 'border-rule'"
+          data-testid="my-recording"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <h2 class="font-display text-xl font-extrabold" dir="auto">{{ item.topicTitle ?? 'Topic removed' }}</h2>
+            <span
+              v-if="item.id === data.submittedId"
+              class="shrink-0 rounded-full bg-good-soft px-3 py-0.5 text-base font-bold text-good"
+            >
+              ✓ Submitted
+            </span>
+          </div>
+          <p class="text-ink-soft" dir="auto">{{ describe(item) }}</p>
+          <AudioPlayer v-if="audioUrls[item.id]" :src="audioUrls[item.id] ?? ''" :duration-ms="item.durationMs" />
+          <div class="flex flex-wrap gap-3">
+            <button v-if="!audioUrls[item.id]" class="btn btn-small" :disabled="busyId === item.id" @click="listen(item)">
+              Listen
+            </button>
+            <button
+              v-if="item.id !== data.submittedId && !closed"
+              class="btn btn-good btn-small"
+              :disabled="busyId === item.id"
+              @click="submit(item)"
+            >
+              Submit to Teacher
+            </button>
+            <button v-if="item.id !== data.submittedId" class="btn btn-small" :disabled="busyId === item.id" @click="remove(item)">
+              Delete
+            </button>
+          </div>
+        </article>
+      </div>
     </template>
 
     <button class="btn btn-primary btn-large" @click="emit('recordAnother')">Record Another</button>

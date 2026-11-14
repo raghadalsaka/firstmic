@@ -272,18 +272,20 @@ function deleteSubmission(item: Submission): void {
             <summary class="flex min-h-10 cursor-pointer items-center font-semibold">Podcast Guide (optional)</summary>
             <div class="flex flex-col gap-4 pb-3">
               <p class="text-base text-ink-soft">Students can open it under the topic title. Leave a box empty to leave it out.</p>
-              <label v-for="key in GUIDE_KEYS" :key="key" class="flex flex-col gap-1 font-semibold">
-                {{ GUIDE_LABELS[key] }}
-                <span class="text-base font-normal text-ink-soft">{{ GUIDE_HINTS[key] }}</span>
-                <textarea
-                  v-model="guideDraft[key]"
-                  class="field-input text-base"
-                  rows="3"
-                  :maxlength="MAX_GUIDE_SECTION_LENGTH"
-                  dir="auto"
-                  :data-testid="`guide-input-${key}`"
-                ></textarea>
-              </label>
+              <div class="grid gap-4 lg:grid-cols-2">
+                <label v-for="key in GUIDE_KEYS" :key="key" class="flex flex-col gap-1 font-semibold">
+                  {{ GUIDE_LABELS[key] }}
+                  <span class="text-base font-normal text-ink-soft">{{ GUIDE_HINTS[key] }}</span>
+                  <textarea
+                    v-model="guideDraft[key]"
+                    class="field-input text-base"
+                    rows="3"
+                    :maxlength="MAX_GUIDE_SECTION_LENGTH"
+                    dir="auto"
+                    :data-testid="`guide-input-${key}`"
+                  ></textarea>
+                </label>
+              </div>
             </div>
           </details>
           <div class="flex flex-wrap gap-3">

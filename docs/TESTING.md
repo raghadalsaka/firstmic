@@ -31,7 +31,7 @@ npm install
 npx playwright install chromium webkit
 node make-media.mjs     # makes test tones with the container's ffmpeg
 node api-smoke.mjs      # 23 API steps
-node solo-e2e.mjs       # 19 browser steps, screenshots in e2e/out/
+node solo-e2e.mjs       # 20 browser steps, screenshots in e2e/out/
 node webkit-layout.mjs  # Safari-engine layout of the home page and student screens
 node group-smoke.mjs    # 15 API steps for two-person podcasts, with two live-call connections
 node group-e2e.mjs      # 9 browser steps: two browsers, each with its own fake microphone
@@ -93,8 +93,10 @@ isn't `firstmic-e2e`.
     stay on screen, and the take stops, plays, saves and is submitted.
 13. The teacher clears a guide and its button disappears for the student.
 14. At 375x667 with the guide open, Record, Stop and the timer are fully on screen.
-15. The student screens fit iPhone 13 and Pixel 7 sizes without sideways scrolling.
-16. The teacher taps **Delete Class**: Cancel keeps it; OK goes back to the class list without it, and its recordings
+15. At 1280x800 (desktop), topics and My Recordings sit in two columns. The open guide becomes a left column beside
+    On My Own, Record and Stop, and toggling it while recording keeps the timer going.
+16. The student screens fit iPhone 13 and Pixel 7 sizes without sideways scrolling.
+17. The teacher taps **Delete Class**: Cancel keeps it; OK goes back to the class list without it, and its recordings
     are gone.
 
 To check that the sent audio holds the tone:
