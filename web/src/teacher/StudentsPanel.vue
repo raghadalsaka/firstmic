@@ -64,19 +64,32 @@ function escapeHtml(value: string): string {
 }
 
 function printPins(): void {
-  const rows = props.students
-    .map((student) => `<tr><td>${escapeHtml(student.name)}</td><td>${student.pin}</td></tr>`)
+  const className = escapeHtml(props.className)
+  const cards = props.students
+    .map(
+      (student) =>
+        `<div class="card"><div class="class">${className}</div>` +
+        `<div class="name" dir="auto">${escapeHtml(student.name)}</div>` +
+        `<div class="pin"><span>PIN</span>${student.pin}</div></div>`,
+    )
     .join('')
   const page = window.open('', '_blank')
   if (!page) {
     error.value = 'Allow pop-ups for this site to print the PINs.'
     return
   }
+  // 4 x 10 cut-out cards fill one A4 page inside the 8 mm margins (194 x 281 mm).
   page.document.write(
-    `<!doctype html><meta charset="utf-8"><title>${escapeHtml(props.className)} PINs</title>` +
-      '<style>body{font-family:system-ui,sans-serif;margin:2rem}table{border-collapse:collapse;width:100%}' +
-      'td,th{border:1px solid #999;padding:.6rem;font-size:1.2rem;text-align:start}td:last-child{font-family:monospace;letter-spacing:.15em}</style>' +
-      `<h1>${escapeHtml(props.className)}: First Mic PINs</h1><table><tr><th>Name</th><th>PIN</th></tr>${rows}</table>`,
+    `<!doctype html><meta charset="utf-8"><title>${className} PINs</title>` +
+      '<style>@page{size:A4;margin:8mm}*{box-sizing:border-box}' +
+      'body{font-family:system-ui,sans-serif;margin:0;color:#000}' +
+      '.sheet{display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:27.5mm;width:194mm}' +
+      '.card{border:1px dashed #999;padding:2mm 3mm;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;break-inside:avoid}' +
+      '.class{font-size:7pt;color:#555;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+      '.name{font-size:10pt;font-weight:700;line-height:1.15;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}' +
+      '.pin{font-family:monospace;font-size:17pt;font-weight:700;letter-spacing:.12em;white-space:nowrap}' +
+      '.pin span{font-family:system-ui,sans-serif;font-size:7pt;font-weight:400;letter-spacing:0;color:#555;margin-inline-end:2mm}</style>' +
+      `<div class="sheet">${cards}</div>`,
   )
   page.document.close()
   page.focus()
