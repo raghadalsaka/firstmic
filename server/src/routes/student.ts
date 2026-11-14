@@ -26,6 +26,7 @@ import { streamFile } from "../lib/http-file.js";
 import { deleteRecording, removeTrackMedia } from "../jobs/submissions.js";
 import { getOrCreateEpisode } from "../lib/episodes.js";
 import { submissionsOpen } from "../lib/deadline.js";
+import { TOPIC_GUIDE_COLUMNS, withGuide, type TopicGuideColumns } from "../lib/topic-guide.js";
 
 const DURATION_SLACK_SECONDS = 30;
 
@@ -177,9 +178,11 @@ export function registerStudentRoutes(app: FastifyInstance): void {
     if (!studio) {
       return;
     }
-    const topics = db
-      .prepare("SELECT id, title FROM topics WHERE studio_id = ? AND active = 1 ORDER BY sort, created_at")
-      .all(studio.id) as Pick<TopicRow, "id" | "title">[];
+    const topics = (
+      db
+        .prepare(`SELECT id, title, ${TOPIC_GUIDE_COLUMNS} FROM topics WHERE studio_id = ? AND active = 1 ORDER BY sort, created_at`)
+        .all(studio.id) as (Pick<TopicRow, "id" | "title"> & TopicGuideColumns)[]
+    ).map(withGuide);
     const students = classStudents(studio.id).map(publicStudent);
     return { class: { name: studio.name }, topics, students, maxSeconds: MAX_EPISODE_SECONDS };
   });

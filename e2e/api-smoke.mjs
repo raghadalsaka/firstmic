@@ -85,6 +85,29 @@ const publicList = await fetch(`${base}/api/classes`).then((r) => r.json())
 assert.ok(publicList.classes.some((c) => c.name === 'Room 12B' && c.classToken === classToken))
 step('the home page list shows the class; the class link shows active topics and the time limit')
 
+// Podcast Guide: optional per topic. The teacher saves, edits and clears it; the class link carries it as plain text.
+const noGuide = { prompt: null, solo: null, partner: null, language: null }
+assert.deepEqual(pub.data.topics.find((t) => t.id === t1.data.topic.id).guide, noGuide, 'a topic without a guide still loads')
+const winter = await json(`/api/teacher/classes/${classId}/topics`, {
+  body: { title: 'My Winter Style', guide: { prompt: '  What did you put on?\r\nWhy?  ', solo: '   ', partner: '<b>Ask</b> a question.' } },
+})
+assert.equal(winter.status, 200, JSON.stringify(winter.data))
+const winterId = winter.data.topic.id
+assert.deepEqual(winter.data.topic.guide, { prompt: 'What did you put on?\nWhy?', solo: null, partner: '<b>Ask</b> a question.', language: null })
+const editedGuide = { prompt: 'What did you put on?\nWhy?', solo: 'Start with "My favourite thing to wear in winter is..."', partner: null, language: 'Use "put on" and "take off."' }
+assert.equal((await json(`/api/teacher/topics/${winterId}`, { method: 'PATCH', body: { guide: editedGuide } })).status, 200)
+assert.equal((await json(`/api/teacher/topics/${winterId}`, { method: 'PATCH', body: { title: 'My Winter Style!' } })).status, 200)
+let winterShown = (await json(`/api/class/${classToken}`)).data.topics.find((t) => t.id === winterId)
+assert.equal(winterShown.title, 'My Winter Style!')
+assert.deepEqual(winterShown.guide, editedGuide, 'a title-only edit keeps the guide')
+assert.deepEqual((await json(`/api/teacher/classes/${classId}`)).data.topics.find((t) => t.id === winterId).guide, editedGuide)
+assert.equal((await json(`/api/teacher/topics/${winterId}`, { method: 'PATCH', body: { guide: { prompt: 'x'.repeat(2001) } } })).status, 400)
+assert.equal((await json(`/api/teacher/topics/${winterId}`, { method: 'PATCH', body: { guide: { prompt: '', solo: ' ', partner: '', language: '' } } })).status, 200)
+winterShown = (await json(`/api/class/${classToken}`)).data.topics.find((t) => t.id === winterId)
+assert.deepEqual(winterShown.guide, noGuide, 'empty boxes clear the guide')
+assert.equal((await json(`/api/teacher/topics/${winterId}`, { method: 'DELETE' })).status, 200)
+step('the Podcast Guide is optional; the teacher saves, edits and clears it, and the class link carries it with its line breaks')
+
 // Roster: the teacher adds students; a typed PIN is kept, a missing one is made
 const added = await json(`/api/teacher/classes/${classId}/students`, {
   body: { students: [{ name: '  Ali  ', emoji: '🦊', pin: '012345' }, { name: 'Sara', emoji: '🐼' }] },

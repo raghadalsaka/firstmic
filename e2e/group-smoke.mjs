@@ -157,6 +157,7 @@ const first = await json('/api/group', { token: ali })
 assert.match(first.data.group.pin, /^\d{6}$/)
 assert.deepEqual(first.data.group.members.map((m) => m.name), ['Ali'])
 assert.equal(first.data.group.topic.title, 'Our school trip')
+assert.deepEqual(first.data.group.topic.guide, { prompt: null, solo: null, partner: null, language: null }, 'no guide yet')
 const pin = first.data.group.pin
 assert.equal((await json(`/api/class/${classToken}/groups`, { body: { topicId: topic.id } })).status, 401)
 step('a student creates a group for a topic and gets a 6-digit group PIN; asking again returns the same group')
@@ -167,13 +168,17 @@ const saraJoin = await joinGroup('Sara', pin)
 assert.equal(saraJoin.status, 200, JSON.stringify(saraJoin.data))
 assert.equal(saraJoin.data.groupId, aliGroup.data.groupId)
 const sara = saraJoin.data.token
+const tripGuide = { prompt: 'Where did you go?', solo: 'Tell us your favourite part.', partner: 'Take turns.\nAsk one question.', language: null }
+assert.equal((await json(`/api/teacher/topics/${topic.id}`, { method: 'PATCH', body: { guide: tripGuide } })).status, 200)
+assert.deepEqual((await group(sara)).topic.guide, tripGuide, 'the partner who joined by PIN gets the guide')
+assert.deepEqual((await group(ali)).topic.guide, tripGuide)
 assert.equal((await joinGroup('Sara', pin)).data.token, sara, 'joining again returns the same membership')
 assert.equal((await joinGroup('Ali', pin)).data.token, ali)
 const omarJoin = await joinGroup('Omar', pin)
 assert.equal(omarJoin.status, 409)
 assert.match(omarJoin.data.error, /full/)
 assert.deepEqual((await group(ali)).members.map((m) => m.name), ['Ali', 'Sara'])
-step('a partner joins with the PIN; a third student is refused because the group is full; wrong or other-class PINs fail')
+step('a partner joins with the PIN and gets the Podcast Guide; a third student is refused because the group is full; wrong or other-class PINs fail')
 
 const linaGroup = await createGroup('Lina')
 const linaPin = (await group(linaGroup.data.token)).pin

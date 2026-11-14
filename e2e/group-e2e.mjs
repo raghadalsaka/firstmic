@@ -7,6 +7,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { chromium, devices } from 'playwright'
 import { fakeToken, startFakeGoogle } from './fake-google.mjs'
+import { clockSeconds, guideButton, shownSections, toggleGuide } from './guide-helpers.mjs'
 
 const [base = 'http://localhost:18101', googlePort = '18199', container = 'firstmic-e2e', outDir = './out'] =
   process.argv.slice(2)
@@ -32,7 +33,13 @@ const teacherApi = async (urlPath, body) => {
   return res.json()
 }
 const classId = (await teacherApi('/api/teacher/classes', { name: 'Room 12D' })).class.id
-await teacherApi(`/api/teacher/classes/${classId}/topics`, { title: 'Our favourite game' })
+const GAME_GUIDE = {
+  prompt: 'What game do you both like to play?',
+  solo: 'Tell us why you like it.',
+  partner: 'Take turns.\nAsk your partner one question about their game.',
+  language: 'Use "because" in one sentence.',
+}
+await teacherApi(`/api/teacher/classes/${classId}/topics`, { title: 'Our favourite game', guide: GAME_GUIDE })
 const students = (
   await teacherApi(`/api/teacher/classes/${classId}/students`, {
     students: [
@@ -129,13 +136,19 @@ function toneLevels(file) {
 const ali = await studentPage(aliBrowser, devices['Pixel 7'], 'Ali')
 await ali.getByRole('button', { name: 'Our favourite game' }).click()
 await ali.getByText('How do you want to record?').waitFor()
+await toggleGuide(ali, true)
+assert.deepEqual(await shownSections(ali), ['prompt', 'solo', 'partner', 'language'])
 await fits(ali, 'ali-1-choose')
 await ali.getByRole('button', { name: 'With a Partner' }).click()
 const pinText = await ali.getByTestId('group-pin').innerText({ timeout: 15_000 })
 assert.match(pinText, /^\d{6}$/)
 await ali.getByText('Waiting for your partner to join…').waitFor()
+assert.equal(await guideButton(ali).getAttribute('aria-expanded'), 'false', 'collapsed on the partner screen')
+await toggleGuide(ali, true)
+assert.deepEqual(await shownSections(ali), ['prompt', 'partner', 'language'])
+assert.equal(await ali.getByTestId('guide-partner').locator('p').innerText(), GAME_GUIDE.partner)
 await fits(ali, 'ali-2-waiting-pin')
-ok(`Ali picks a topic, chooses With a Partner and gets group PIN ${pinText}`)
+ok(`Ali picks a topic (guide shows every section), chooses With a Partner (guide shows the partner sections) and gets group PIN ${pinText}`)
 
 // ---- Sara joins with the PIN; they can hear each other ----
 const sara = await studentPage(saraBrowser, iphone, 'Sara')
@@ -156,6 +169,10 @@ const saraHears = await partnerTone(sara)
 const aliHears = await partnerTone(ali)
 assert.ok(saraHears && Math.abs(saraHears.hz - 440) < 15, `Sara hears Ali's 440 Hz tone: ${JSON.stringify(saraHears)}`)
 assert.ok(aliHears && Math.abs(aliHears.hz - 660) < 15, `Ali hears Sara's 660 Hz tone: ${JSON.stringify(aliHears)}`)
+assert.equal(await guideButton(sara).getAttribute('aria-expanded'), 'false')
+await toggleGuide(sara, true)
+assert.deepEqual(await shownSections(sara), ['prompt', 'partner', 'language'], 'the partner who joined by PIN sees the same guide')
+assert.equal(await sara.getByTestId('guide-partner').locator('p').innerText(), GAME_GUIDE.partner)
 await fits(ali, 'ali-3-ready')
 await fits(sara, 'sara-2-ready')
 ok(`Sara joins with the PIN (a wrong PIN is refused); they talk live: Sara hears ${saraHears.hz} Hz, Ali hears ${aliHears.hz} Hz`)
@@ -176,7 +193,20 @@ await ali.getByRole('button', { name: 'Record' }).click()
 await ali.getByRole('button', { name: 'Stop' }).waitFor()
 await sara.getByText('Ali is in charge. Ali taps Stop.').waitFor()
 assert.equal(await sara.getByRole('button', { name: 'Stop' }).count(), 0)
-await ali.waitForTimeout(4000)
+const ticks = { ali: [], sara: [] }
+for (let i = 0; i < 4; i++) {
+  await ali.waitForTimeout(400)
+  await toggleGuide(ali, i % 2 === 1)
+  await toggleGuide(sara, i % 2 === 1)
+  ticks.ali.push(await clockSeconds(ali))
+  ticks.sara.push(await clockSeconds(sara))
+}
+for (const [name, list] of Object.entries(ticks)) {
+  assert.ok(list.every((t, i) => i === 0 || t >= list[i - 1]) && list.at(-1) - list[0] >= 1, `${name}'s timer kept running: ${list}`)
+}
+const saraHearsRecording = await partnerTone(sara)
+assert.ok(saraHearsRecording && Math.abs(saraHearsRecording.hz - 440) < 15, `the call carries on: ${JSON.stringify(saraHearsRecording)}`)
+console.log(`  timers while toggling the guide: ${JSON.stringify(ticks)}; Sara still hears ${saraHearsRecording.hz} Hz`)
 for (const page of [ali, sara]) {
   assert.equal((await page.getByTestId('on-air').innerText()).trim().toUpperCase(), 'ON AIR')
 }
@@ -193,7 +223,7 @@ const saraPlayed = await playFor(sara, '[data-testid="mix-player"] audio', 1000)
 assert.ok(saraPlayed > 0.5, `Sara's mix playback did not advance (${saraPlayed})`)
 await fits(ali, 'ali-5-listening')
 await fits(sara, 'sara-4-listening-partner')
-ok(`Ali taps Record and controls the take; after Stop both hear the mix (Sara played ${saraPlayed.toFixed(2)}s); only Ali gets Save for Both`)
+ok(`Ali taps Record and controls the take; both toggle the guide while recording without stopping the timer or the call; after Stop both hear the mix (Sara played ${saraPlayed.toFixed(2)}s); only Ali gets Save for Both`)
 
 // A reload brings Sara back to the same take
 await sara.reload()

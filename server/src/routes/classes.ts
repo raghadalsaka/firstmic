@@ -10,12 +10,24 @@ import { submissionAudioPath } from "../lib/storage.js";
 import { streamFile } from "../lib/http-file.js";
 import { deleteEpisodes, deleteRecording } from "../jobs/submissions.js";
 import { classStudents } from "../lib/roster.js";
+import {
+  guideColumnValues,
+  TOPIC_GUIDE_ASSIGNMENTS,
+  TOPIC_GUIDE_COLUMNS,
+  topicGuideSchema,
+  withGuide,
+  type TopicGuideColumns,
+} from "../lib/topic-guide.js";
 
 const classNameSchema = z.object({ name: z.string().trim().min(1).max(120) });
-const topicCreateSchema = z.object({ title: z.string().trim().min(1).max(200) });
+const topicCreateSchema = z.object({ title: z.string().trim().min(1).max(200), guide: topicGuideSchema.default({}) });
 const topicUpdateSchema = z
-  .object({ title: z.string().trim().min(1).max(200).optional(), active: z.boolean().optional() })
-  .refine((value) => value.title !== undefined || value.active !== undefined);
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    active: z.boolean().optional(),
+    guide: topicGuideSchema.optional(),
+  })
+  .refine((value) => value.title !== undefined || value.active !== undefined || value.guide !== undefined);
 const topicOrderSchema = z.object({ topicIds: z.array(z.string().min(1)).min(1).max(500) });
 // Epoch ms, or null for no deadline.
 const deadlineSchema = z.object({ deadline: z.number().int().positive().nullable() });
@@ -110,9 +122,11 @@ export function registerClassRoutes(app: FastifyInstance): void {
       return;
     }
     const { studio } = member;
-    const topics = db
-      .prepare("SELECT id, title, active, sort FROM topics WHERE studio_id = ? ORDER BY sort, created_at")
-      .all(studio.id);
+    const topics = (
+      db
+        .prepare(`SELECT id, title, active, sort, ${TOPIC_GUIDE_COLUMNS} FROM topics WHERE studio_id = ? ORDER BY sort, created_at`)
+        .all(studio.id) as (Pick<TopicRow, "id" | "title" | "active" | "sort"> & TopicGuideColumns)[]
+    ).map(withGuide);
     const submissions = db
       .prepare(
         `SELECT sub.id, sub.version, sub.duration_ms, sub.with_names,
@@ -213,10 +227,12 @@ export function registerClassRoutes(app: FastifyInstance): void {
         next: number;
       }
     ).next;
+    const guide = parsed.data.guide;
     db.prepare(
-      "INSERT INTO topics (id, studio_id, title, active, sort, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?, ?)"
-    ).run(id, member.studio.id, parsed.data.title, sort, now, now);
-    return { topic: { id, title: parsed.data.title, active: 1, sort } };
+      `INSERT INTO topics (id, studio_id, title, active, sort, created_at, updated_at, ${TOPIC_GUIDE_COLUMNS})
+       VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, member.studio.id, parsed.data.title, sort, now, now, ...guideColumnValues(guide));
+    return { topic: { id, title: parsed.data.title, active: 1, sort, guide } };
   });
 
   app.put("/api/teacher/classes/:classId/topic-order", async (req, reply) => {
@@ -259,13 +275,11 @@ export function registerClassRoutes(app: FastifyInstance): void {
     }
     const title = parsed.data.title ?? topic.title;
     const active = parsed.data.active === undefined ? topic.active : Number(parsed.data.active);
-    db.prepare("UPDATE topics SET title = ?, active = ?, updated_at = ? WHERE id = ?").run(
-      title,
-      active,
-      Date.now(),
-      topic.id
-    );
-    return { topic: { id: topic.id, title, active, sort: topic.sort } };
+    const guide = parsed.data.guide ?? withGuide(topic).guide;
+    db.prepare(
+      `UPDATE topics SET title = ?, active = ?, updated_at = ?, ${TOPIC_GUIDE_ASSIGNMENTS} WHERE id = ?`
+    ).run(title, active, Date.now(), ...guideColumnValues(guide), topic.id);
+    return { topic: { id: topic.id, title, active, sort: topic.sort, guide } };
   });
 
   // Deletes the topic with every episode recorded for it, including their files.

@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watchEffect } from 'vue'
 import AudioPlayer from '../components/AudioPlayer.vue'
 import OnAirBadge from '../components/OnAirBadge.vue'
+import PodcastGuide from '../components/PodcastGuide.vue'
 import { SUGGESTED_MIN_SECONDS } from '../config'
 import { formatClock } from '../utils/format'
+import type { TopicGuide } from '../utils/guide'
 import { useRecorder } from './useRecorder'
 
 const props = defineProps<{
   classToken: string
   topicId: string
   topicTitle: string
+  topicGuide?: TopicGuide | null
   studentToken: string
   maxSeconds: number
 }>()
@@ -30,14 +33,23 @@ const showTimer = computed(() => ['recording', 'recorded', 'sending', 'send-fail
 const isShort = computed(() => elapsedMs.value < SUGGESTED_MIN_SECONDS * 1000)
 const showPlayer = computed(() => audioUrl.value !== null && ['recorded', 'send-failed'].includes(phase.value))
 const hitLimit = computed(() => elapsedMs.value >= maxMs - 250)
+const guideOpen = ref(false)
+// ClassPage fits the page to the phone while this is true, so the open guide box shrinks instead of pushing
+// Record or Stop off screen.
+const fitScreen = defineModel<boolean>('fitScreen', { default: false })
+watchEffect(() => {
+  fitScreen.value = guideOpen.value && ['ready', 'starting', 'mic-blocked', 'recording'].includes(phase.value)
+})
 </script>
 
 <template>
-  <section class="flex flex-col items-center gap-6 text-center">
+  <section class="flex flex-col items-center gap-6 text-center" :class="fitScreen ? 'min-h-0 flex-1' : ''">
     <div>
       <p class="text-ink-soft">Your topic</p>
       <h1 class="font-display text-3xl font-extrabold">{{ topicTitle }}</h1>
     </div>
+
+    <PodcastGuide v-model:open="guideOpen" :guide="topicGuide" mode="solo" compact />
 
     <p
       v-if="showTimer"

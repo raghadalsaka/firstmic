@@ -25,3 +25,6 @@ export const PIN_LENGTH: number = 6
 export const MAX_PHOTO_LENGTH: number = 45000
 export const PHOTO_SIZE_PX: number = 160
 export const PHOTO_QUALITIES: readonly number[] = [0.85, 0.7, 0.5]
+
+// Matches the server's limit per Podcast Guide section (server/src/lib/topic-guide.ts).
+export const MAX_GUIDE_SECTION_LENGTH: number = 2000

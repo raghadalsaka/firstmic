@@ -144,7 +144,8 @@
   }
 
   .btn-mic {
-    @apply size-44 rounded-full font-display text-3xl;
+    /* min-h-24: on a short phone with the Podcast Guide open, Record/Stop may shrink but stay a big target. */
+    @apply size-44 min-h-24 rounded-full font-display text-3xl;
     --edge: 8px;
   }
 

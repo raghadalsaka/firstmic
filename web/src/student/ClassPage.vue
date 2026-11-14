@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import PodcastGuide from '../components/PodcastGuide.vue'
 import StudentBadge from '../components/StudentBadge.vue'
 import { PIN_LENGTH } from '../config'
 import { api, ApiError, errorMessage } from '../services/api'
 import type { PublicStudent } from '../types/roster'
+import type { TopicGuide } from '../utils/guide'
 import { isPin } from '../utils/roster'
 import { classPath } from '../utils/slug'
 import type { GroupAccess } from '../group/types'
@@ -13,7 +15,7 @@ import MyRecordingsPanel from './MyRecordingsPanel.vue'
 import RecordPanel from './RecordPanel.vue'
 import { forgetStudent, loadLogin, saveLogin, type StoredLogin } from './storage'
 
-type Topic = { id: string; title: string }
+type Topic = { id: string; title: string; guide: TopicGuide }
 type ClassInfo = { class: { name: string }; topics: Topic[]; students: PublicStudent[]; maxSeconds: number }
 
 const props = defineProps<{ classToken: string }>()
@@ -36,6 +38,7 @@ const groupError = ref('')
 const groupBusy = ref(false)
 const notice = ref('')
 const showingRecordings = ref(false)
+const fitScreen = ref(false)
 
 const pinComplete = computed(() => isPin(pin.value))
 const groupPinComplete = computed(() => isPin(groupPin.value))
@@ -110,6 +113,7 @@ function notMe(): void {
 
 function backToTopics(): void {
   showingRecordings.value = false
+  fitScreen.value = false
   topic.value = null
   recordAlone.value = false
   groupAccess.value = null
@@ -173,7 +177,10 @@ async function groupGone(): Promise<void> {
 </script>
 
 <template>
-  <main class="mx-auto flex min-h-dvh w-full max-w-xl flex-col gap-6 px-4 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+  <main
+    class="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+    :class="fitScreen ? 'h-dvh' : 'min-h-dvh'"
+  >
     <header class="flex items-center justify-between gap-3">
       <RouterLink to="/" class="font-display text-xl font-extrabold">First Mic</RouterLink>
       <p v-if="info" class="truncate text-ink-soft" dir="auto">{{ info.class.name }}</p>
@@ -242,6 +249,7 @@ async function groupGone(): Promise<void> {
     <GroupPanel
       v-else-if="groupAccess"
       :key="groupAccess.groupId"
+      v-model:fit-screen="fitScreen"
       :class-token="classToken"
       :group-id="groupAccess.groupId"
       :token="groupAccess.token"
@@ -309,6 +317,7 @@ async function groupGone(): Promise<void> {
         <p class="text-ink-soft">Your topic</p>
         <h1 class="font-display text-3xl font-extrabold" dir="auto">{{ topic.title }}</h1>
       </div>
+      <PodcastGuide :guide="topic.guide" mode="all" />
       <p class="text-lg font-semibold">How do you want to record?</p>
       <div class="flex w-full max-w-sm flex-col gap-4">
         <button class="btn btn-primary btn-large" @click="recordAlone = true">On My Own</button>
@@ -326,9 +335,11 @@ async function groupGone(): Promise<void> {
     <RecordPanel
       v-else
       :key="topic.id"
+      v-model:fit-screen="fitScreen"
       :class-token="classToken"
       :topic-id="topic.id"
       :topic-title="topic.title"
+      :topic-guide="topic.guide"
       :student-token="login.studentToken"
       :max-seconds="info.maxSeconds"
       @change-topic="backToTopics"

@@ -6,10 +6,13 @@ import StudentBadge from '../components/StudentBadge.vue'
 import { api, ApiError, errorMessage } from '../services/api'
 import type { RosterStudent } from '../types/roster'
 import { formatClock, formatDateTime } from '../utils/format'
+import { MAX_GUIDE_SECTION_LENGTH } from '../config'
+import { GUIDE_KEYS, GUIDE_LABELS, hasGuide, type TopicGuide } from '../utils/guide'
 import { classPath } from '../utils/slug'
 import StudentsPanel from './StudentsPanel.vue'
 
-type Topic = { id: string; title: string; active: number; sort: number }
+type Topic = { id: string; title: string; active: number; sort: number; guide: TopicGuide }
+type GuideDraft = Record<keyof TopicGuide, string>
 type Submission = {
   id: string
   version: number
@@ -39,6 +42,15 @@ const topicDraft = ref('')
 const editingId = ref<string | null>(null)
 const topicInput = ref<HTMLInputElement | null>(null)
 const topicFilter = ref('')
+const guideDraft = ref<GuideDraft>(blankGuideDraft())
+const guideOpen = ref(false)
+
+const GUIDE_HINTS: Record<keyof TopicGuide, string> = {
+  prompt: 'Shown to everyone: the questions to answer.',
+  solo: 'Shown when a student records on their own.',
+  partner: 'Shown to both partners when they record together.',
+  language: 'Shown to everyone: words or grammar to try.',
+}
 const deadlineDraft = ref('')
 
 const classLink = computed(() =>
@@ -66,6 +78,10 @@ function toLocalInput(epochMs: number): string {
   const date = new Date(epochMs)
   const pad = (n: number): string => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function blankGuideDraft(guide?: TopicGuide): GuideDraft {
+  return Object.fromEntries(GUIDE_KEYS.map((key) => [key, guide?.[key] ?? ''])) as GuideDraft
 }
 
 async function load(): Promise<void> {
@@ -107,18 +123,19 @@ function rotateLink(): void {
   void run(() => api(`/api/teacher/classes/${props.classId}/class-link`, { method: 'POST' }))
 }
 
-/** One form adds a topic, or saves the one picked with Edit. */
+/** One form adds a topic, or saves the one picked with Edit; an empty guide box clears that section. */
 function saveTopic(): void {
   const title = topicDraft.value.trim()
   if (!title) {
     return
   }
   const id = editingId.value
+  const guide = { ...guideDraft.value }
   void run(async () => {
     if (id === null) {
-      await api(`/api/teacher/classes/${props.classId}/topics`, { body: { title } })
+      await api(`/api/teacher/classes/${props.classId}/topics`, { body: { title, guide } })
     } else {
-      await api(`/api/teacher/topics/${id}`, { method: 'PATCH', body: { title } })
+      await api(`/api/teacher/topics/${id}`, { method: 'PATCH', body: { title, guide } })
     }
     cancelEdit()
   })
@@ -127,12 +144,16 @@ function saveTopic(): void {
 function startEdit(topic: Topic): void {
   editingId.value = topic.id
   topicDraft.value = topic.title
+  guideDraft.value = blankGuideDraft(topic.guide)
+  guideOpen.value = hasGuide(topic.guide)
   topicInput.value?.focus()
 }
 
 function cancelEdit(): void {
   editingId.value = null
   topicDraft.value = ''
+  guideDraft.value = blankGuideDraft()
+  guideOpen.value = false
 }
 
 function toggleTopic(topic: Topic): void {
@@ -233,7 +254,7 @@ function deleteSubmission(item: Submission): void {
 
       <section class="panel flex flex-col gap-4 p-5">
         <h2 class="font-display text-xl font-extrabold">Topics</h2>
-        <form class="flex flex-col gap-3 sm:flex-row" @submit.prevent="saveTopic">
+        <form class="flex flex-col gap-3" @submit.prevent="saveTopic">
           <input
             ref="topicInput"
             v-model="topicDraft"
@@ -243,10 +264,34 @@ function deleteSubmission(item: Submission): void {
             dir="auto"
             :aria-label="editingId === null ? 'New topic' : 'Topic title'"
           />
-          <button class="btn btn-primary btn-small shrink-0" type="submit" :disabled="!topicDraft.trim()">
-            {{ editingId === null ? 'Add Topic' : 'Edit Topic' }}
-          </button>
-          <button v-if="editingId !== null" class="btn btn-small shrink-0" type="button" @click="cancelEdit">Cancel</button>
+          <details
+            class="rounded-tile border-3 border-rule px-3"
+            :open="guideOpen"
+            @toggle="guideOpen = ($event.target as HTMLDetailsElement).open"
+          >
+            <summary class="flex min-h-10 cursor-pointer items-center font-semibold">Podcast Guide (optional)</summary>
+            <div class="flex flex-col gap-4 pb-3">
+              <p class="text-base text-ink-soft">Students can open it under the topic title. Leave a box empty to leave it out.</p>
+              <label v-for="key in GUIDE_KEYS" :key="key" class="flex flex-col gap-1 font-semibold">
+                {{ GUIDE_LABELS[key] }}
+                <span class="text-base font-normal text-ink-soft">{{ GUIDE_HINTS[key] }}</span>
+                <textarea
+                  v-model="guideDraft[key]"
+                  class="field-input text-base"
+                  rows="3"
+                  :maxlength="MAX_GUIDE_SECTION_LENGTH"
+                  dir="auto"
+                  :data-testid="`guide-input-${key}`"
+                ></textarea>
+              </label>
+            </div>
+          </details>
+          <div class="flex flex-wrap gap-3">
+            <button class="btn btn-primary btn-small" type="submit" :disabled="!topicDraft.trim()">
+              {{ editingId === null ? 'Add Topic' : 'Edit Topic' }}
+            </button>
+            <button v-if="editingId !== null" class="btn btn-small" type="button" @click="cancelEdit">Cancel</button>
+          </div>
         </form>
         <p v-if="detail.topics.length === 0" class="text-ink-soft">No topics yet. Students need at least one.</p>
         <ul class="flex flex-col gap-2">
@@ -258,6 +303,9 @@ function deleteSubmission(item: Submission): void {
           >
             <span class="flex-1 font-semibold" dir="auto">
               {{ topic.title }}<span v-if="!topic.active" class="text-ink-soft"> (hidden)</span>
+              <span v-if="hasGuide(topic.guide)" class="block text-base font-normal text-ink-soft">
+                Has a Podcast Guide
+              </span>
             </span>
             <button class="btn btn-small" :disabled="index === 0" aria-label="Move up" @click="moveTopic(index, -1)">Up</button>
             <button class="btn btn-small" :disabled="index === detail.topics.length - 1" aria-label="Move down" @click="moveTopic(index, 1)">Down</button>

@@ -14,6 +14,12 @@ record, but can't submit or change their submission. The dashboard lists each st
 download as an MP3, and who hasn't submitted yet. **Delete Class** removes the class for good, with its topics, students
 and every recording.
 
+**Podcast Guide:** each topic can carry an optional guide with four sections: Podcast Prompt, Solo Guide, Partner
+Guide and Language Challenge. Students tap **View Podcast Guide** under the topic title. When choosing how to
+record they see every section; while recording on their own they see the prompt, the Solo Guide and the language
+challenge, and with a partner the prompt, the Partner Guide and the language challenge. They can open and close it
+while recording without affecting the take.
+
 **Two-person podcasts:** after picking a topic, a student chooses **With a Partner** and gets a 6-digit group PIN
 to share (there is no invite link). A classmate taps **Join a Partner** and types it; once two students are in, the
 group is full. They talk live and use Record → Stop → Listen with Try Again and the 3-minute limit. Whoever taps

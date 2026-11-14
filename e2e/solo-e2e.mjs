@@ -5,6 +5,7 @@ import path from 'node:path'
 import assert from 'node:assert/strict'
 import { chromium, devices } from 'playwright'
 import { gisStub, startFakeGoogle } from './fake-google.mjs'
+import { clockSeconds, guideButton, shownSections, toggleGuide } from './guide-helpers.mjs'
 
 const [base = 'http://localhost:18101', googlePort = '18199', toneWav = './media/tone440.wav', outDir = './out'] =
   process.argv.slice(2)
@@ -268,6 +269,166 @@ await first.waitFor({ state: 'detached' })
 assert.equal(await items.count(), 1)
 await shot(teacher, 'teacher-class-v2')
 ok('after the deadline Submit is gone; without it the student submits the other topic and deletes the first')
+
+// ---- Podcast Guide: the teacher saves, edits and clears it; a student opens it before and while recording ----
+const WINTER = {
+  prompt:
+    'Describe an outfit you actually wore on a cold or rainy day. What did you put on before going outside? What did you take off when you came indoors? Why did you choose those clothes?',
+  solo: 'Start with “My favourite thing to wear in winter is…” Then describe your outfit and tell us about the day you wore it.',
+  partner:
+    'Take turns describing what you wear in winter. Ask a follow-up question, such as “Why do you wear that?” Finish by sharing one similarity or difference in your winter styles.',
+  language:
+    'Use “put on” and “take off.” Try one sentence with “it” or “them.”\nFor example, “I put my gloves on before I left home. I took them off when I got to school.”',
+}
+const topicRow = (title) => teacher.locator('li', { hasText: title }).filter({ has: teacher.getByRole('button', { name: 'Edit' }) })
+await teacher.getByLabel('New topic').fill('My Winter Style')
+await teacher.getByText('Podcast Guide (optional)').click()
+for (const key of ['prompt', 'solo', 'partner']) await teacher.getByTestId(`guide-input-${key}`).fill(WINTER[key])
+await teacher.getByTestId('guide-input-language').fill(WINTER.language.split('\n')[0])
+await shot(teacher, 'teacher-guide-add')
+await teacher.getByRole('button', { name: 'Add Topic' }).click()
+await topicRow('My Winter Style').getByText('Has a Podcast Guide').waitFor()
+await teacher.reload()
+await topicRow('My Winter Style').getByRole('button', { name: 'Edit' }).click()
+for (const key of ['prompt', 'solo', 'partner']) assert.equal(await teacher.getByTestId(`guide-input-${key}`).inputValue(), WINTER[key])
+await teacher.getByTestId('guide-input-language').fill(WINTER.language)
+await teacher.getByRole('button', { name: 'Edit Topic' }).click()
+await teacher.getByRole('button', { name: 'Add Topic' }).waitFor()
+await teacher.reload()
+await topicRow('My Winter Style').getByRole('button', { name: 'Edit' }).click()
+assert.equal(await teacher.getByTestId('guide-input-language').inputValue(), WINTER.language, 'the edit keeps its line break')
+await shot(teacher, 'teacher-guide-edit')
+await teacher.getByRole('button', { name: 'Cancel' }).click()
+await topicRow('A day at school').getByRole('button', { name: 'Edit' }).click()
+await teacher.getByText('Podcast Guide (optional)').click()
+await teacher.getByTestId('guide-input-partner').fill('<b>Ask</b> your partner one question.')
+await teacher.getByRole('button', { name: 'Edit Topic' }).click()
+await topicRow('A day at school').getByText('Has a Podcast Guide').waitFor()
+assert.equal(await topicRow('My favourite animal').getByText('Has a Podcast Guide').count(), 0)
+ok('the teacher adds a Podcast Guide to a new topic, edits it (line breaks kept) and adds a partner guide to an older topic')
+
+const { defaultBrowserType: _se, ...iphoneSE } = devices['iPhone SE']
+const guideCtx = await browser.newContext({ ...iphoneSE, permissions: ['microphone'] })
+const sara = await guideCtx.newPage()
+sara.on('console', (m) => m.type() === 'error' && console.log('  [sara console]', m.text()))
+await sara.goto(classLink)
+await sara.getByRole('button', { name: 'Sara' }).click()
+await sara.getByLabel('Type your PIN').fill(saraPin)
+await sara.getByRole('button', { name: 'Next' }).click()
+const noSideScroll = async (label) => {
+  const overflow = await sara.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+  assert.ok(overflow <= 0, `${label}: horizontal overflow ${overflow}px`)
+}
+
+await sara.getByRole('button', { name: 'My favourite animal' }).click()
+await sara.getByText('How do you want to record?').waitFor()
+assert.equal(await guideButton(sara).count(), 0, 'no guide, no button when choosing')
+await sara.getByRole('button', { name: 'On My Own' }).click()
+await sara.getByRole('button', { name: 'Record' }).waitFor()
+assert.equal(await guideButton(sara).count(), 0, 'no guide, no button when recording')
+await sara.getByRole('button', { name: 'Change topic' }).click()
+
+await sara.getByRole('button', { name: 'A day at school' }).click()
+await toggleGuide(sara, true)
+assert.deepEqual(await shownSections(sara), ['partner'])
+assert.equal(await sara.getByTestId('guide-partner').locator('p').innerText(), '<b>Ask</b> your partner one question.')
+assert.equal(await sara.getByTestId('podcast-guide').locator('b').count(), 0, 'teacher text is plain text')
+await sara.getByRole('button', { name: 'On My Own' }).click()
+await sara.getByRole('button', { name: 'Record' }).waitFor()
+assert.equal(await guideButton(sara).count(), 0, 'a partner-only guide has nothing for the solo recording screen')
+await sara.getByRole('button', { name: 'Change topic' }).click()
+
+await sara.getByRole('button', { name: 'My Winter Style' }).click()
+assert.equal(await guideButton(sara).getAttribute('aria-expanded'), 'false')
+assert.deepEqual(await shownSections(sara), [], 'collapsed by default')
+await toggleGuide(sara, true)
+assert.deepEqual(await shownSections(sara), ['prompt', 'solo', 'partner', 'language'])
+assert.equal(await sara.getByTestId('guide-language').locator('p').innerText(), WINTER.language)
+await noSideScroll('choose with guide')
+await shot(sara, 'guide-1-choose-open')
+await toggleGuide(sara, false)
+await sara.getByRole('button', { name: 'On My Own' }).click()
+await sara.getByRole('button', { name: 'Record' }).waitFor()
+assert.equal(await guideButton(sara).getAttribute('aria-expanded'), 'false', 'collapsed again on the recording screen')
+await toggleGuide(sara, true)
+assert.deepEqual(await shownSections(sara), ['prompt', 'solo', 'language'])
+await noSideScroll('ready with guide')
+await shot(sara, 'guide-2-ready-open')
+ok('the guide button shows only where a screen has guidance, starts collapsed, and shows every section when choosing but only the solo ones when recording alone; teacher text stays plain text')
+
+await sara.getByRole('button', { name: 'Record' }).click()
+const stop = sara.getByRole('button', { name: 'Stop' })
+await stop.waitFor()
+const viewport = sara.viewportSize()
+const ticks = []
+for (let i = 0; i < 6; i++) {
+  await sara.waitForTimeout(500)
+  await toggleGuide(sara, i % 2 === 1)
+  ticks.push(await clockSeconds(sara))
+  const timerBox = await sara.getByRole('timer').boundingBox()
+  const stopBox = await stop.boundingBox()
+  assert.ok(timerBox.y >= 0 && timerBox.y + timerBox.height <= viewport.height, `the timer stays on screen (toggle ${i + 1})`)
+  assert.ok(stopBox.y + stopBox.height / 2 <= viewport.height, `Stop stays reachable (toggle ${i + 1}): ${JSON.stringify(stopBox)}`)
+  assert.equal(await sara.getByTestId('on-air').count(), 1, 'still recording')
+}
+assert.ok(ticks.every((t, i) => i === 0 || t >= ticks[i - 1]) && ticks.at(-1) - ticks[0] >= 2, `the timer kept running: ${ticks}`)
+const stopBox = await stop.boundingBox()
+await noSideScroll('recording with guide')
+await shot(sara, 'guide-3-recording-open')
+await stop.click()
+await sara.getByRole('button', { name: 'Save' }).waitFor()
+assert.ok((await clockSeconds(sara)) >= ticks.at(-1))
+const guidePlayed = await sara.evaluate(async () => {
+  const audio = document.querySelector('audio')
+  await audio.play()
+  await new Promise((r) => setTimeout(r, 800))
+  const t = audio.currentTime
+  audio.pause()
+  return t
+})
+assert.ok(guidePlayed > 0.3, `listen-back did not play (currentTime ${guidePlayed})`)
+await sara.getByRole('button', { name: 'Save' }).click()
+const winterItem = sara.getByTestId('my-recording').filter({ hasText: 'My Winter Style' })
+await winterItem.waitFor({ timeout: 60_000 })
+await winterItem.getByRole('button', { name: 'Submit to Teacher' }).click()
+await winterItem.getByText('✓ Submitted').waitFor()
+await teacher.reload()
+await rows.filter({ hasText: 'Sara' }).filter({ hasText: 'My Winter Style' }).waitFor()
+ok(
+  `at ${viewport.width}x${viewport.height}, toggling the guide 6 times while recording keeps the take and timer going (${ticks.join(', ')}s; Stop at y ${Math.round(stopBox.y)}-${Math.round(stopBox.y + stopBox.height)}); the take stops, plays (${guidePlayed.toFixed(2)}s), saves and is submitted`,
+)
+
+await topicRow('A day at school').getByRole('button', { name: 'Edit' }).click()
+await teacher.getByTestId('guide-input-partner').fill('')
+await teacher.getByRole('button', { name: 'Edit Topic' }).click()
+await topicRow('A day at school').getByText('Has a Podcast Guide').waitFor({ state: 'detached' })
+await sara.reload()
+await sara.getByRole('button', { name: 'A day at school' }).click()
+await sara.getByText('How do you want to record?').waitFor()
+assert.equal(await guideButton(sara).count(), 0, 'a cleared guide hides the button')
+ok('the teacher clears a guide and the student no longer sees the button')
+
+await sara.setViewportSize({ width: 375, height: 667 })
+await sara.getByRole('button', { name: 'Change topic' }).click()
+await sara.getByRole('button', { name: 'My Winter Style' }).click()
+await sara.getByRole('button', { name: 'On My Own' }).click()
+await sara.getByRole('button', { name: 'Record' }).waitFor()
+await toggleGuide(sara, true)
+const recordBox = await sara.getByRole('button', { name: 'Record' }).boundingBox()
+assert.ok(recordBox.y + recordBox.height <= 667, `Record is fully on screen: ${JSON.stringify(recordBox)}`)
+await sara.getByRole('button', { name: 'Record' }).click()
+await stop.waitFor()
+await sara.waitForTimeout(1500)
+const fullStop = await stop.boundingBox()
+const fullTimer = await sara.getByRole('timer').boundingBox()
+assert.ok(fullStop.y + fullStop.height <= 667 && fullTimer.y >= 0, `Stop and the timer are fully on screen: ${JSON.stringify({ fullStop, fullTimer })}`)
+const guideBoxHeight = (await sara.getByRole('region', { name: 'Podcast Guide' }).boundingBox()).height
+await shot(sara, 'guide-4-recording-375x667')
+await stop.click()
+await sara.getByRole('button', { name: 'Try Again' }).click()
+await sara.getByRole('button', { name: 'Record' }).waitFor()
+await guideCtx.close()
+ok(`at 375x667 with the guide open, Record and then Stop and the timer are fully on screen (guide box ${Math.round(guideBoxHeight)}px, scrolls inside)`)
 
 // ---- Layout: no horizontal scroll on phones ----
 for (const [label, device] of [['iphone13', devices['iPhone 13']], ['pixel7', devices['Pixel 7']]]) {

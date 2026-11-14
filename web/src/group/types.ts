@@ -1,4 +1,6 @@
 // Mirrors GroupSnapshot in server/src/lib/groups.ts.
+import type { TopicGuide } from '../utils/guide'
+
 export type TakeStatus = 'recording' | 'mixing' | 'listening' | 'failed'
 
 export interface GroupMember {
@@ -21,7 +23,7 @@ export interface GroupTake {
 export interface GroupState {
   id: string
   pin: string
-  topic: { id: string; title: string } | null
+  topic: { id: string; title: string; guide: TopicGuide } | null
   members: GroupMember[]
   take: GroupTake | null
   sent: { takeId: string; version: number; durationMs: number | null; sentAt: number } | null

@@ -30,8 +30,8 @@ cd e2e
 npm install
 npx playwright install chromium webkit
 node make-media.mjs     # makes test tones with the container's ffmpeg
-node api-smoke.mjs      # 22 API steps
-node solo-e2e.mjs       # 14 browser steps, screenshots in e2e/out/
+node api-smoke.mjs      # 23 API steps
+node solo-e2e.mjs       # 19 browser steps, screenshots in e2e/out/
 node webkit-layout.mjs  # Safari-engine layout of the home page and student screens
 node group-smoke.mjs    # 15 API steps for two-person podcasts, with two live-call connections
 node group-e2e.mjs      # 9 browser steps: two browsers, each with its own fake microphone
@@ -56,6 +56,7 @@ isn't `firstmic-e2e`.
 - Google sign-in: a token issued to another app, an unverified email and the old password sign-up are all refused
 - the public class list on the home page
 - class and topic management, topic ordering and hiding
+- the Podcast Guide: saved with a topic, edited, cleared with empty boxes, line breaks kept, and too-long text refused
 - the class link (and the 404 after a new link is made)
 - episode creation
 - Save puts a recording in My Recordings without submitting it; Submit hands it to the teacher
@@ -83,8 +84,17 @@ isn't `firstmic-e2e`.
 8. A second topic recorded until the 10-second auto-stop is saved next to the first, which stays submitted.
 9. The teacher sets a deadline in the past: the student's Submit buttons disappear. Without a deadline the student
    submits the second topic and deletes the first.
-10. The student screens fit iPhone 13 and Pixel 7 sizes without sideways scrolling.
-11. The teacher taps **Delete Class**: Cancel keeps it; OK goes back to the class list without it, and its recordings
+10. The teacher adds "My Winter Style" with all four Podcast Guide sections, edits it (a line break is kept) and adds
+    a Partner Guide to an older topic.
+11. At 320x568 the student sees no guide button on a topic without a guide, and none on the solo record screen of a
+    topic with only a Partner Guide. Teacher text shows as plain text. The guide starts collapsed on each screen; the
+    choose screen shows all four sections and the solo record screen shows the prompt, Solo Guide and Language Challenge.
+12. While recording, the student opens and closes the guide six times. The timer keeps counting, the timer and Stop
+    stay on screen, and the take stops, plays, saves and is submitted.
+13. The teacher clears a guide and its button disappears for the student.
+14. At 375x667 with the guide open, Record, Stop and the timer are fully on screen.
+15. The student screens fit iPhone 13 and Pixel 7 sizes without sideways scrolling.
+16. The teacher taps **Delete Class**: Cancel keeps it; OK goes back to the class list without it, and its recordings
     are gone.
 
 To check that the sent audio holds the tone:
@@ -97,7 +107,7 @@ docker exec firstmic-e2e ffmpeg -nostats -i /tmp/v1.mp3 -af "bandpass=f=440:widt
 **`group-smoke.mjs`** checks:
 
 - creating a group gives a 6-digit PIN; creating again returns the same group
-- a partner joins with the PIN; a third student is refused because the group is full; a wrong PIN, or a PIN from
+- a partner joins with the PIN and gets the topic's Podcast Guide in the group data; a third student is refused because the group is full; a wrong PIN, or a PIN from
   another class, fails
 - joining a friend's group drops your own group for that topic if nobody joined it
 - group tokens can't reach solo or teacher routes, and a solo token can't join a live call
@@ -114,11 +124,13 @@ docker exec firstmic-e2e ffmpeg -nostats -i /tmp/v1.mp3 -af "bandpass=f=440:widt
 
 **`group-e2e.mjs`** drives two Chromium browsers. Ali's fake microphone plays a 440 Hz tone and Sara's a 660 Hz tone.
 
-1. Ali picks a topic, chooses **With a Partner** and sees a group PIN.
+1. Ali picks a topic and opens the Podcast Guide (all four sections), chooses **With a Partner** and sees a group
+   PIN. The guide on the partner screen starts collapsed and shows the prompt, Partner Guide and Language Challenge.
 2. Sara joins with the PIN; a wrong PIN is refused. They hear each other live: each page measures the partner's tone
    from the call.
-3. Omar types the PIN and is told the group is full.
-4. Ali taps Record and controls the take; Sara sees "Ali is in charge". After Stop, both play the mix; only Ali has
+3. Omar types the PIN and is told the group is full. (Sara, who joined by PIN, opens the same partner guide in step 2.)
+4. Ali taps Record and controls the take; Sara sees "Ali is in charge". Both open and close the guide while
+   recording: both timers keep counting and Sara still hears Ali's tone. After Stop, both play the mix; only Ali has
    Save for Both.
 5. Sara reloads and comes back to the same take.
 6. Try Again clears it on both phones.
@@ -139,15 +151,20 @@ Android Chrome and real networks. Use the deployed HTTPS site. The microphone do
 **Teacher, on a laptop:**
 
 1. Open `https://<domain>/teacher/sign-in`, click **Sign In with Google** and pick your Google account.
-2. Create a class, for example "Test class", add two topics and a test student (note the PIN).
+2. Create a class, for example "Test class", add two topics and a test student (note the PIN). Give one topic a
+   Podcast Guide with all four sections, using line breaks.
 3. Open the home page and check "Test class" is listed.
 
 **Student, on each phone (iPhone Safari, then Android Chrome), on mobile data if possible:**
 
 1. Open `https://<domain>`, tap "Test class", tap your test student's name, type their PIN, then tap **Next**.
-2. Pick a topic. The record screen shows the topic, a big **Record** button and the 3:00 limit.
-3. Tap **Record**. Allow the microphone when the phone asks.
-   - **Expected:** the timer counts up in red, with "Recording".
+2. Pick the topic with the guide. Tap **View Podcast Guide**: all four sections show, with your line breaks; tap
+   **Hide Podcast Guide**. Tap **On My Own**. The record screen shows the topic, a big **Record** button and the
+   3:00 limit.
+3. Open the guide (prompt, Solo Guide, Language Challenge only), then tap **Record**. Allow the microphone when the
+   phone asks.
+   - **Expected:** the timer counts up in red, with an **On Air** badge. Close and open the guide a few times: the
+     timer keeps counting, and the timer and **Stop** stay on screen.
 4. Speak for about 20 seconds, then tap **Stop**.
    - **Expected:** an audio player plus **Save** and **Try Again**, and a tip to talk for at least 2 minutes.
 5. Play it back. **Expected:** you hear yourself.

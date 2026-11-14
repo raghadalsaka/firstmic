@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, watchEffect } from 'vue'
 import AudioPlayer from '../components/AudioPlayer.vue'
 import OnAirBadge from '../components/OnAirBadge.vue'
+import PodcastGuide from '../components/PodcastGuide.vue'
 import StudentBadge from '../components/StudentBadge.vue'
 import { SUGGESTED_MIN_SECONDS } from '../config'
 import { formatClock } from '../utils/format'
@@ -33,6 +34,13 @@ const showTimer = computed(() => ['recording', 'mixing', 'listening'].includes(c
 const hitLimit = computed(() => elapsedMs.value >= maxMs.value - 250)
 const isShort = computed(() => elapsedMs.value < SUGGESTED_MIN_SECONDS * 1000)
 const canLeave = computed(() => current.value !== 'recording' && uploadPercent.value === null)
+const guideOpen = ref(false)
+// ClassPage fits the page to the phone while this is true, so the open guide box shrinks instead of pushing
+// Record or Stop off screen.
+const fitScreen = defineModel<boolean>('fitScreen', { default: false })
+watchEffect(() => {
+  fitScreen.value = guideOpen.value && (current.value === 'ready' || current.value === 'recording')
+})
 const callText = computed(() => {
   if (callState.value === 'connected') {
     return `You can hear ${partnerName.value}.`
@@ -42,11 +50,13 @@ const callText = computed(() => {
 </script>
 
 <template>
-  <section class="flex flex-col items-center gap-6 text-center">
+  <section class="flex flex-col items-center gap-6 text-center" :class="fitScreen ? 'min-h-0 flex-1' : ''">
     <div>
       <p class="text-ink-soft">Your topic</p>
       <h1 class="font-display text-3xl font-extrabold" dir="auto">{{ group?.topic?.title ?? '…' }}</h1>
     </div>
+
+    <PodcastGuide v-model:open="guideOpen" :guide="group?.topic?.guide" mode="partner" compact />
 
     <ul v-if="group" class="flex flex-wrap justify-center gap-4" aria-label="Your group">
       <li v-for="member in group.members" :key="member.participantId" class="flex items-center gap-2 font-semibold" data-testid="group-member">

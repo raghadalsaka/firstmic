@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import path from "node:path";
 import { DATA_DIR } from "./storage.js";
+import type { TopicGuideColumns } from "./topic-guide.js";
 
 // storage.js creates DATA_DIR when it loads.
 export const db = new Database(path.join(DATA_DIR, "firstmic.db"));
@@ -265,6 +266,14 @@ addColumns([
 ]);
 db.exec("CREATE INDEX IF NOT EXISTS idx_students_submitted ON students(submitted_submission_id)");
 
+// Podcast Guide: optional teacher text per topic. Existing topics keep NULL, which means no guidance.
+addColumns([
+  "ALTER TABLE topics ADD COLUMN guide_prompt TEXT",
+  "ALTER TABLE topics ADD COLUMN guide_solo TEXT",
+  "ALTER TABLE topics ADD COLUMN guide_partner TEXT",
+  "ALTER TABLE topics ADD COLUMN guide_language TEXT",
+]);
+
 // Backfill: solo episodes' participants name their student, as group members do (idempotent).
 db.exec(`
   UPDATE participants SET student_id = (SELECT s.student_id FROM sessions s WHERE s.id = participants.session_id)
@@ -362,7 +371,7 @@ export type TopicRow = {
   sort: number;
   created_at: number;
   updated_at: number;
-};
+} & TopicGuideColumns;
 
 /** ready: saved in the student's My Recordings. replaced: from before recordings were kept (no file). */
 export type SubmissionStatus = "sending" | "ready" | "failed" | "replaced";

@@ -2,6 +2,7 @@ import { db, type GroupTakeRow, type GroupTakeStatus, type SessionRow, type Stud
 import { newId, newToken } from "./ids.js";
 import { newPin } from "./roster.js";
 import { broadcast, connectedParticipantIds, disconnect } from "./rooms.js";
+import { TOPIC_GUIDE_COLUMNS, withGuide, type TopicGuide, type TopicGuideColumns } from "./topic-guide.js";
 
 /** Two-person podcasts: the student who creates the group and one partner. */
 export const GROUP_SIZE = 2;
@@ -20,7 +21,7 @@ export type GroupMember = {
 export type GroupSnapshot = {
   id: string;
   pin: string;
-  topic: { id: string; title: string } | null;
+  topic: { id: string; title: string; guide: TopicGuide } | null;
   members: GroupMember[];
   take: {
     id: string;
@@ -82,8 +83,8 @@ export function groupSnapshot(sessionId: string): GroupSnapshot | null {
   if (!session) {
     return null;
   }
-  const topic = db.prepare("SELECT id, title FROM topics WHERE id = ?").get(session.topic_id ?? "") as
-    | Pick<TopicRow, "id" | "title">
+  const topic = db.prepare(`SELECT id, title, ${TOPIC_GUIDE_COLUMNS} FROM topics WHERE id = ?`).get(session.topic_id ?? "") as
+    | (Pick<TopicRow, "id" | "title"> & TopicGuideColumns)
     | undefined;
   const members = groupMembers(session.id);
   const take = openTake(session.id);
@@ -91,7 +92,7 @@ export function groupSnapshot(sessionId: string): GroupSnapshot | null {
   return {
     id: session.id,
     pin: session.group_pin ?? "",
-    topic: topic ?? null,
+    topic: topic ? withGuide(topic) : null,
     members,
     take: take
       ? {
