@@ -65,7 +65,7 @@ function escapeHtml(value: string): string {
 
 function printPins(): void {
   const rows = props.students
-    .map((student) => `<tr><td>${escapeHtml(student.emoji)}</td><td>${escapeHtml(student.name)}</td><td>${student.pin}</td></tr>`)
+    .map((student) => `<tr><td>${escapeHtml(student.name)}</td><td>${student.pin}</td></tr>`)
     .join('')
   const page = window.open('', '_blank')
   if (!page) {
@@ -76,7 +76,7 @@ function printPins(): void {
     `<!doctype html><meta charset="utf-8"><title>${escapeHtml(props.className)} PINs</title>` +
       '<style>body{font-family:system-ui,sans-serif;margin:2rem}table{border-collapse:collapse;width:100%}' +
       'td,th{border:1px solid #999;padding:.6rem;font-size:1.2rem;text-align:start}td:last-child{font-family:monospace;letter-spacing:.15em}</style>' +
-      `<h1>${escapeHtml(props.className)}: First Mic PINs</h1><table><tr><th></th><th>Name</th><th>PIN</th></tr>${rows}</table>`,
+      `<h1>${escapeHtml(props.className)}: First Mic PINs</h1><table><tr><th>Name</th><th>PIN</th></tr>${rows}</table>`,
   )
   page.document.close()
   page.focus()
