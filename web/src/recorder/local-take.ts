@@ -35,6 +35,45 @@ export function pickAudioMimeType(isSupported: (mime: string) => boolean): strin
   return AUDIO_MIME_CANDIDATES.find((mime) => isSupported(mime)) ?? null
 }
 
+const WEBM_BROKEN_KEY = 'firstmic:webm-broken'
+const EBML_MAGIC: readonly number[] = [0x1a, 0x45, 0xdf, 0xa3]
+
+function webmBrokenOnThisDevice(): boolean {
+  try {
+    return localStorage.getItem(WEBM_BROKEN_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function rememberWebmBroken(): void {
+  try {
+    localStorage.setItem(WEBM_BROKEN_KEY, '1')
+  } catch {
+    // Storage blocked: this device keeps trying WebM.
+  }
+}
+
+/** Some iPhones record WebM whose first chunk has no EBML header, which the server can't read. */
+export async function isHeaderlessWebm(mimeType: string, firstChunk: Blob | undefined): Promise<boolean> {
+  if (!mimeType.startsWith('audio/webm') || !firstChunk) {
+    return false
+  }
+  const head = new Uint8Array(await firstChunk.slice(0, EBML_MAGIC.length).arrayBuffer())
+  return EBML_MAGIC.some((byte, i) => head[i] !== byte)
+}
+
+/** Like pickAudioMimeType, but skips WebM on a device that has already sent a headerless WebM take. */
+export function pickDeviceAudioMimeType(isSupported: (mime: string) => boolean): string | null {
+  if (webmBrokenOnThisDevice()) {
+    const notWebm = pickAudioMimeType((mime) => !mime.startsWith('audio/webm') && isSupported(mime))
+    if (notWebm) {
+      return notWebm
+    }
+  }
+  return pickAudioMimeType(isSupported)
+}
+
 const createMediaRecorder: CreateRecorder = (stream, mimeType) =>
   new MediaRecorder(stream, { mimeType, audioBitsPerSecond: AUDIO_BITS_PER_SECOND }) as unknown as RecorderLike
 
@@ -121,6 +160,9 @@ export class TakeRecorder {
           mimeType: recorder.mimeType || this.requestedMimeType,
           durationMs: this.elapsedMs(),
           chunks: [...this.chunks],
+        }
+        if (await isHeaderlessWebm(take.mimeType, take.chunks[0]).catch(() => false)) {
+          rememberWebmBroken()
         }
         await chunkStore.putTrack({
           localId: take.localId,

@@ -349,7 +349,16 @@ export function registerStudentRoutes(app: FastifyInstance): void {
     for (const abandonedTrackId of abandonedTrackIds) {
       removeTrackMedia(abandonedTrackId);
     }
-    req.log.info({ episodeId: student.session.id, submissionId }, "submission started");
+    req.log.info(
+      {
+        episodeId: student.session.id,
+        submissionId,
+        trackId,
+        mimeType: parsed.data.mimeType,
+        userAgent: req.headers["user-agent"],
+      },
+      "submission started"
+    );
     return { submissionId, trackId };
   });
 

@@ -1,7 +1,7 @@
 import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue'
 import { api, ApiError, errorMessage, fetchAudio } from '../services/api'
 import { chunkStore } from '../recorder/chunk-store'
-import { discardTake, loadStoredTake, pickAudioMimeType, TakeRecorder, type FinishedTake } from '../recorder/local-take'
+import { discardTake, loadStoredTake, pickDeviceAudioMimeType, TakeRecorder, type FinishedTake } from '../recorder/local-take'
 import { isRejection, uploadChunks, wait } from '../recorder/upload-manager'
 import { MIC_CONSTRAINTS, requestWakeLock, type WakeLock } from '../recorder/device'
 import { fetchRtcConfig, PeerManager } from '../group/peers'
@@ -106,7 +106,7 @@ export function useGroupRoom(options: {
       return
     }
     recordedTakeIds.add(take.id)
-    const mimeType = pickAudioMimeType((mime) => MediaRecorder.isTypeSupported(mime))
+    const mimeType = pickDeviceAudioMimeType((mime) => MediaRecorder.isTypeSupported(mime))
     if (!mimeType) {
       actionError.value = "This browser can't record. Try the latest Chrome or Safari."
       return

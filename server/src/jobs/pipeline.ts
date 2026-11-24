@@ -163,6 +163,30 @@ function notifyTrack(sessionId: string, trackId: string, status: string): void {
   broadcast(sessionId, { t: "track-status", trackId, status });
 }
 
+const UPLOAD_HEAD_BYTES = 16;
+
+/** What a device sent for a track ffmpeg couldn't read: its type, chunk sizes and first bytes. */
+function describeUpload(track: TrackRow): string {
+  const count = track.final_chunk_count ?? 0;
+  const sizes: number[] = [];
+  for (let i = 0; i < count; i++) {
+    sizes.push(fs.existsSync(chunkPath(track.id, i)) ? fs.statSync(chunkPath(track.id, i)).size : -1);
+  }
+  let head = "missing";
+  try {
+    const fd = fs.openSync(chunkPath(track.id, 0), "r");
+    try {
+      const buffer = Buffer.alloc(UPLOAD_HEAD_BYTES);
+      head = buffer.subarray(0, fs.readSync(fd, buffer, 0, UPLOAD_HEAD_BYTES, 0)).toString("hex");
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    // No chunk 0 on disk; "missing" says so.
+  }
+  return `mime=${track.mime_type} chunks=${count} sizes=${sizes.join(",")} head=${head}`;
+}
+
 /** Assemble chunks → probe → MP4 + WAV deliverables. */
 async function processTrack(trackId: string): Promise<void> {
   const track = getTrack(trackId);
@@ -243,6 +267,7 @@ async function processTrack(trackId: string): Promise<void> {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[jobs] track ${trackId} processing failed:`, message);
+    console.error(`[jobs] track ${trackId} upload: ${describeUpload(track)}`);
     db.prepare("UPDATE tracks SET status = 'failed', error = ? WHERE id = ?").run(
       message.slice(0, 2000),
       trackId

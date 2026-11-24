@@ -1,6 +1,6 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { api, ApiError } from '../services/api'
-import { discardTake, loadStoredTake, pickAudioMimeType, TakeRecorder, type FinishedTake } from '../recorder/local-take'
+import { discardTake, loadStoredTake, pickDeviceAudioMimeType, TakeRecorder, type FinishedTake } from '../recorder/local-take'
 import { MIC_CONSTRAINTS, requestWakeLock, type WakeLock } from '../recorder/device'
 import { EpisodeGoneError, sendTake } from '../recorder/send'
 import { loadEpisode, loadPendingTake, saveEpisode, savePendingTake, type StoredEpisode } from './storage'
@@ -86,7 +86,7 @@ export function useRecorder(options: {
       return
     }
     phase.value = 'starting'
-    const mimeType = pickAudioMimeType((mime) => MediaRecorder.isTypeSupported(mime))
+    const mimeType = pickDeviceAudioMimeType((mime) => MediaRecorder.isTypeSupported(mime))
     if (!mimeType) {
       phase.value = 'unsupported'
       return

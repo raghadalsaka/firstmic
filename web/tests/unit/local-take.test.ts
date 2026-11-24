@@ -1,7 +1,14 @@
 import 'fake-indexeddb/auto'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { chunkStore } from '../../src/recorder/chunk-store'
-import { discardTake, loadStoredTake, pickAudioMimeType, TakeRecorder } from '../../src/recorder/local-take'
+import {
+  discardTake,
+  isHeaderlessWebm,
+  loadStoredTake,
+  pickAudioMimeType,
+  pickDeviceAudioMimeType,
+  TakeRecorder,
+} from '../../src/recorder/local-take'
 import { FakeClock, FakeRecorder } from './helpers'
 
 const stream = {} as MediaStream
@@ -71,5 +78,34 @@ describe('TakeRecorder', () => {
     await discardTake(finished)
     expect(await chunkStore.getTrack(finished.localId)).toBeNull()
     expect(await loadStoredTake(finished.localId)).toBeNull()
+  })
+})
+
+describe('headerless WebM fallback', () => {
+  const ebml = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x01])
+  const anyFormat = () => true
+
+  beforeEach(() => localStorage.clear())
+
+  it('spots a WebM first chunk without the EBML header, and ignores MP4', async () => {
+    expect(await isHeaderlessWebm('audio/webm;codecs=opus', new Blob([ebml]))).toBe(false)
+    expect(await isHeaderlessWebm('audio/webm;codecs=opus', new Blob(['cluster']))).toBe(true)
+    expect(await isHeaderlessWebm('audio/mp4', new Blob(['cluster']))).toBe(false)
+    expect(await isHeaderlessWebm('audio/webm', undefined)).toBe(false)
+  })
+
+  it('keeps WebM after a good take and switches this device to MP4 after a headerless one', async () => {
+    const good = makeRecorder(180_000)
+    await good.take.start(stream, 'audio/webm;codecs=opus')
+    good.fake.ondataavailable?.({ data: new Blob([ebml]) })
+    await good.take.stop()
+    expect(pickDeviceAudioMimeType(anyFormat)).toBe('audio/webm;codecs=opus')
+
+    const bad = makeRecorder(180_000)
+    await bad.take.start(stream, 'audio/webm;codecs=opus')
+    bad.fake.emit('cluster')
+    await bad.take.stop()
+    expect(pickDeviceAudioMimeType(anyFormat)).toBe('audio/mp4')
+    expect(pickDeviceAudioMimeType((mime) => mime.startsWith('audio/webm'))).toBe('audio/webm;codecs=opus')
   })
 })

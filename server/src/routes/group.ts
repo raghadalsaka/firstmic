@@ -153,6 +153,10 @@ export async function registerGroupRoutes(app: FastifyInstance): Promise<void> {
     if (!result.ok) {
       return reply.code(result.status).send({ error: result.error });
     }
+    req.log.info(
+      { takeId: found.take.id, trackId: result.trackId, mimeType: parsed.data.mimeType, userAgent: req.headers["user-agent"] },
+      "voice upload started"
+    );
     return { trackId: result.trackId };
   });
 
