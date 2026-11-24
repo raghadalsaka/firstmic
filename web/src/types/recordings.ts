@@ -1,3 +1,5 @@
+import type { Highlight, Scores } from '../utils/grading'
+
 // Mirrors GET /api/class/:classToken/recordings in server/src/routes/student.ts.
 export interface MyRecording {
   id: string
@@ -15,4 +17,6 @@ export interface MyRecordings {
   deadline: number | null
   /** Whether the student can still submit or change their submission (the server checks the deadline). */
   open: boolean
+  /** The teacher's grade on the submitted recording, once the class's Top 3 is published; null before then. */
+  feedback: { levels: Scores; highlights: Highlight[] } | null
 }

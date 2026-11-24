@@ -26,6 +26,7 @@ import { streamFile } from "../lib/http-file.js";
 import { deleteRecording, removeTrackMedia } from "../jobs/submissions.js";
 import { getOrCreateEpisode } from "../lib/episodes.js";
 import { submissionsOpen } from "../lib/deadline.js";
+import { studentFeedback } from "../lib/grades.js";
 import { TOPIC_GUIDE_COLUMNS, withGuide, type TopicGuideColumns } from "../lib/topic-guide.js";
 
 const DURATION_SLACK_SECONDS = 30;
@@ -184,7 +185,12 @@ export function registerStudentRoutes(app: FastifyInstance): void {
         .all(studio.id) as (Pick<TopicRow, "id" | "title"> & TopicGuideColumns)[]
     ).map(withGuide);
     const students = classStudents(studio.id).map(publicStudent);
-    return { class: { name: studio.name }, topics, students, maxSeconds: MAX_EPISODE_SECONDS };
+    return {
+      class: { name: studio.name, top3Published: studio.top3_published_at != null },
+      topics,
+      students,
+      maxSeconds: MAX_EPISODE_SECONDS,
+    };
   });
 
   app.post("/api/class/:classToken/sign-in", async (req, reply) => {
@@ -239,6 +245,7 @@ export function registerStudentRoutes(app: FastifyInstance): void {
       submittedId: student.submitted_submission_id ?? null,
       deadline: studio.submission_deadline ?? null,
       open: submissionsOpen(studio),
+      feedback: studentFeedback(studio, student.submitted_submission_id ?? null),
     };
   });
 

@@ -44,6 +44,9 @@ export const CRITERION_LABELS: Record<Criterion, string> = {
   language: 'Language',
 }
 
+/** What a student sees for levels 1 to 4; only the teacher sees the numbers. */
+export const LEVEL_WORDS: readonly [string, string, string, string] = ['Keep practising', 'Good', 'Great', 'Excellent']
+
 /** What each level means, from 1 (beginning) to 4 (excellent). */
 export const RUBRIC: Record<Criterion, readonly [string, string, string, string]> = {
   content: [

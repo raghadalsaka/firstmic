@@ -70,7 +70,10 @@ async function copyTopLink(): Promise<void> {
         <h2 class="font-display text-xl font-extrabold">Top 3 page</h2>
         <template v-if="data.class.top3PublishedAt !== null">
           <p class="font-semibold text-good">Published on {{ formatDateTime(data.class.top3PublishedAt) }}.</p>
-          <p class="text-ink-soft">Anyone with this link can play the class's 3 best recordings, highlights first.</p>
+          <p class="text-ink-soft">
+            Anyone with this link can play the class's 3 best recordings, highlights first, without scores. It is also linked
+            from the class page, and each student sees their own grade in words, with their highlights, in My Recordings.
+          </p>
           <input class="field-input text-base" :value="decodeURI(topLink)" dir="auto" readonly aria-label="Top 3 link" @focus="($event.target as HTMLInputElement).select()" />
           <div class="flex flex-wrap gap-3">
             <button class="btn btn-primary btn-small" @click="copyTopLink">{{ copied ? 'Copied!' : 'Copy Link' }}</button>
@@ -79,7 +82,10 @@ async function copyTopLink(): Promise<void> {
           </div>
         </template>
         <template v-else>
-          <p class="text-ink-soft">Hidden. Review the grades below, then publish to share the class's 3 best recordings.</p>
+          <p class="text-ink-soft">
+            Hidden. Review the grades below, then publish to share the class's 3 best recordings and show each student their
+            own grade in words.
+          </p>
           <button class="btn btn-primary btn-small self-start" :disabled="gradedCount === 0" @click="setPublished(true)">
             Publish Top 3
           </button>

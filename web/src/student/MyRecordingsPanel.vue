@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import AudioPlayer from '../components/AudioPlayer.vue'
+import HighlightPlayer from '../components/HighlightPlayer.vue'
 import { api, ApiError, errorMessage, fetchAudio } from '../services/api'
 import type { MyRecording, MyRecordings } from '../types/recordings'
 import { formatClock, formatDateTime } from '../utils/format'
+import { CRITERIA, CRITERION_LABELS, LEVEL_WORDS, RUBRIC } from '../utils/grading'
 
 const props = defineProps<{ classToken: string; studentToken: string }>()
 const emit = defineEmits<{ recordAnother: []; signedOut: [] }>()
@@ -132,7 +134,27 @@ onUnmounted(() => Object.values(audioUrls.value).forEach((url) => URL.revokeObje
             </span>
           </div>
           <p class="text-ink-soft" dir="auto">{{ describe(item) }}</p>
-          <AudioPlayer v-if="audioUrls[item.id]" :src="audioUrls[item.id] ?? ''" :duration-ms="item.durationMs" />
+          <div v-if="item.id === data.submittedId && data.feedback" class="flex flex-col gap-2" data-testid="my-feedback">
+            <h3 class="font-display text-lg font-extrabold">Your teacher's feedback</h3>
+            <dl class="flex flex-col gap-2">
+              <div v-for="criterion in CRITERIA" :key="criterion">
+                <dt class="font-bold">
+                  {{ CRITERION_LABELS[criterion] }}: {{ LEVEL_WORDS[data.feedback.levels[criterion] - 1] }}
+                </dt>
+                <dd class="text-base text-ink-soft">{{ RUBRIC[criterion][data.feedback.levels[criterion] - 1] }}</dd>
+              </div>
+            </dl>
+            <p v-if="data.feedback.highlights.length > 0" class="font-bold">Your best moments</p>
+          </div>
+          <template v-if="audioUrls[item.id]">
+            <HighlightPlayer
+              v-if="item.id === data.submittedId && data.feedback"
+              :src="audioUrls[item.id] ?? ''"
+              :duration-ms="item.durationMs"
+              :highlights="data.feedback.highlights"
+            />
+            <AudioPlayer v-else :src="audioUrls[item.id] ?? ''" :duration-ms="item.durationMs" />
+          </template>
           <div class="flex flex-wrap gap-3">
             <button v-if="!audioUrls[item.id]" class="btn btn-small" :disabled="busyId === item.id" @click="listen(item)">
               Listen

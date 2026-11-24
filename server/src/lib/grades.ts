@@ -183,6 +183,21 @@ export function topRecordings(studioId: string): RankedRecording[] {
     .slice(0, TOP_RECORDING_COUNT);
 }
 
+/**
+ * A student's grade on their submitted recording as they see it: a level per criterion (the page shows words, never
+ * numbers) and their highlights. Null until the teacher publishes the class's Top 3, and for an ungraded recording.
+ */
+export function studentFeedback(
+  studio: { id: string; top3_published_at?: number | null },
+  submissionId: string | null
+): { levels: Scores; highlights: Highlight[] } | null {
+  if (studio.top3_published_at == null || !submissionId) {
+    return null;
+  }
+  const grade = classRecordings(studio.id).find((recording) => recording.submissionIds.includes(submissionId))?.grade;
+  return grade ? { levels: grade.scores, highlights: grade.highlights } : null;
+}
+
 export function recordingsBySubmission(recordings: ClassRecording[]): Map<string, ClassRecording> {
   return new Map(recordings.flatMap((recording) => recording.submissionIds.map((id) => [id, recording])));
 }

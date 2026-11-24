@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue'
 import HighlightPlayer from '../components/HighlightPlayer.vue'
 import { api, ApiError } from '../services/api'
-import { MAX_TOTAL, type Highlight } from '../utils/grading'
+import type { Highlight } from '../utils/grading'
 import { classPath } from '../utils/slug'
 
 type TopRecording = {
@@ -11,7 +11,6 @@ type TopRecording = {
   names: string[]
   topicTitle: string | null
   durationMs: number | null
-  total: number
   highlights: Highlight[]
 }
 type TopResponse = { className: string; published: boolean; recordings: TopRecording[] }
@@ -33,7 +32,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="mx-auto flex min-h-dvh w-full max-w-xl flex-col gap-6 px-4 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] lg:max-w-4xl">
+  <main class="mx-auto flex min-h-dvh w-full max-w-xl flex-col gap-6 px-4 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] lg:max-w-3xl">
     <header class="flex items-center justify-between gap-3">
       <RouterLink to="/" class="font-display text-xl font-extrabold">First Mic</RouterLink>
       <RouterLink
@@ -68,17 +67,14 @@ onMounted(async () => {
         <p class="text-ink-soft" dir="auto">{{ data.className }}</p>
         <h1 class="font-display text-4xl font-extrabold">Top 3 Podcasts</h1>
       </div>
-      <ol class="grid gap-5 lg:grid-cols-3 lg:items-start">
+      <ol class="flex flex-col gap-5">
         <li
           v-for="recording in data.recordings"
           :key="recording.submissionId"
           class="panel flex flex-col gap-4 p-5"
           data-testid="top-recording"
         >
-          <div class="flex items-start justify-between gap-3">
-            <span class="font-display text-3xl font-extrabold text-rec">{{ RANK_LABELS[recording.rank - 1] }}</span>
-            <span class="font-display text-xl font-extrabold tabular-nums">{{ recording.total }}/{{ MAX_TOTAL }}</span>
-          </div>
+          <span class="font-display text-3xl font-extrabold text-rec">{{ RANK_LABELS[recording.rank - 1] }}</span>
           <div>
             <h2 class="font-display text-2xl font-extrabold" dir="auto">{{ recording.names.join(' & ') }}</h2>
             <p class="text-ink-soft" dir="auto">{{ recording.topicTitle }}</p>

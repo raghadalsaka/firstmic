@@ -8,7 +8,7 @@ import { api, ApiError, errorMessage } from '../services/api'
 import type { PublicStudent } from '../types/roster'
 import { GUIDE_SPLIT, type TopicGuide } from '../utils/guide'
 import { isPin } from '../utils/roster'
-import { classPath } from '../utils/slug'
+import { classPath, topPath } from '../utils/slug'
 import type { GroupAccess } from '../group/types'
 import GroupPanel from './GroupPanel.vue'
 import MyRecordingsPanel from './MyRecordingsPanel.vue'
@@ -16,7 +16,12 @@ import RecordPanel from './RecordPanel.vue'
 import { forgetStudent, loadLogin, saveLogin, type StoredLogin } from './storage'
 
 type Topic = { id: string; title: string; guide: TopicGuide }
-type ClassInfo = { class: { name: string }; topics: Topic[]; students: PublicStudent[]; maxSeconds: number }
+type ClassInfo = {
+  class: { name: string; top3Published: boolean }
+  topics: Topic[]
+  students: PublicStudent[]
+  maxSeconds: number
+}
 
 const props = defineProps<{ classToken: string }>()
 const route = useRoute()
@@ -226,6 +231,14 @@ async function groupGone(): Promise<void> {
     </section>
 
     <section v-else-if="!login" class="flex flex-col gap-4">
+      <RouterLink
+        v-if="info.class.top3Published"
+        :to="topPath(classToken, info.class.name)"
+        class="btn btn-large w-full"
+        data-testid="top3-link"
+      >
+        Listen to the Top 3 Podcasts
+      </RouterLink>
       <h1 class="font-display text-2xl font-extrabold">Who are you?</h1>
       <p v-if="info.students.length === 0" class="panel p-6 text-center text-ink-soft">
         Your teacher hasn't added your name yet. Check back soon.
@@ -299,6 +312,9 @@ async function groupGone(): Promise<void> {
       </p>
       <p v-if="notice" class="alert-bad" role="status">{{ notice }}</p>
       <button class="btn btn-good btn-large w-full" @click="openRecordings">My Recordings</button>
+      <RouterLink v-if="info.class.top3Published" :to="topPath(classToken, info.class.name)" class="btn btn-large w-full">
+        Listen to the Top 3 Podcasts
+      </RouterLink>
       <div class="grid gap-4 lg:grid-cols-2">
         <button
           v-for="item in info.topics"

@@ -17,7 +17,7 @@ import { requireClass } from "./student.js";
 
 const publishSchema = z.object({ published: z.boolean() });
 
-/** What the public Top 3 page shows: no teacher comment, and one submission id to play the recording by. */
+/** What the public Top 3 page shows: no scores or teacher comment, and one submission id to play the recording by. */
 function publicRecording(recording: RankedRecording) {
   return {
     rank: recording.rank,
@@ -25,7 +25,6 @@ function publicRecording(recording: RankedRecording) {
     names: recording.names,
     topicTitle: recording.topicTitle,
     durationMs: recording.durationMs,
-    total: recording.grade.total,
     highlights: recording.grade.highlights,
   };
 }

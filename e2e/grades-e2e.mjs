@@ -202,35 +202,45 @@ assert.deepEqual(
 )
 step("grades save; the partners' grade covers both copies; a 12-12 tie goes to the higher Content score")
 
+const classInfo = async () => (await json(`/api/class/${classToken}`, { anonymous: true })).data.class
+assert.equal((await classInfo()).top3Published, false)
+assert.equal((await mine('Omar')).feedback, null, 'students see nothing until the teacher publishes')
+step('before publishing, the class page has no Top 3 link and students see no grade')
+
 assert.equal((await json(`/api/teacher/classes/${classId}/top3`, { method: 'PUT', body: { published: true } })).status, 200)
 const shown = await top3()
 assert.equal(shown.published, true)
 assert.deepEqual(
-  shown.recordings.map((r) => [r.rank, [...r.names].sort().join('+'), r.total]),
+  shown.recordings.map((r) => [r.rank, [...r.names].sort().join('+')]),
   [
-    [1, 'Ali+Sara', 14],
-    [2, 'Omar', 12],
-    [3, 'Lina', 12],
+    [1, 'Ali+Sara'],
+    [2, 'Omar'],
+    [3, 'Lina'],
   ],
 )
+assert.ok(shown.recordings.every((r) => !('total' in r) && !('scores' in r)), 'the public page gets no scores')
 assert.ok(!JSON.stringify(shown).includes('Teacher-only'), 'the teacher comment stays private')
+assert.equal((await classInfo()).top3Published, true)
 for (const recording of shown.recordings) {
   const res = await publicAudio(recording.submissionId)
   assert.equal(res.status, 200)
   assert.equal(res.headers.get('content-type'), 'audio/mpeg')
 }
 assert.equal((await publicAudio(solo.Huda)).status, 404, 'fourth place is not playable on the public page')
-step('published: anyone with the class link sees the Top 3 with highlights (no comment) and can play only those three')
+step('published: anyone with the class link sees the Top 3 with highlights (no scores or comment) and can play only those three')
+
+const omarFeedback = (await mine('Omar')).feedback
+assert.deepEqual(omarFeedback, { levels: scores(4, 3, 3, 2), highlights: [{ startMs: 500, endMs: 1500, note: 'Clear voice' }] })
+assert.ok(!('total' in omarFeedback) && !JSON.stringify(omarFeedback).includes('Teacher-only'))
+assert.deepEqual((await mine('Ali')).feedback.levels, scores(4, 4, 3, 3), "Ali's submitted copy carries the partners' grade")
+assert.equal((await mine('Huda')).feedback.levels.content, 2)
+step('published: each student gets their own grade as levels with their highlights, never a total or the comment')
 
 assert.equal((await putGrades([{ submissionId: solo.Huda, scores: scores(4, 4, 4, 4), highlights: [] }])).status, 200)
 const reranked = await top3()
 assert.deepEqual(
-  reranked.recordings.map((r) => [[...r.names].sort().join('+'), r.total]),
-  [
-    ['Huda', 16],
-    ['Ali+Sara', 14],
-    ['Omar', 12],
-  ],
+  reranked.recordings.map((r) => [...r.names].sort().join('+')),
+  ['Huda', 'Ali+Sara', 'Omar'],
 )
 assert.equal((await publicAudio(solo.Lina)).status, 404, 'Lina dropped out of the Top 3')
 assert.equal((await json(`/api/teacher/classes/${classId}/grades/${solo.Huda}`, { method: 'DELETE' })).status, 200)
@@ -301,7 +311,10 @@ for (const [label, viewport] of [['phone', { width: 375, height: 740 }], ['deskt
   await top.getByRole('heading', { name: 'Top 3 Podcasts' }).waitFor()
   const cards = top.getByTestId('top-recording')
   assert.equal(await cards.count(), 3)
-  assert.match(await cards.first().innerText(), /1st[\s\S]*14\/16/)
+  assert.match(await cards.first().innerText(), /1st/)
+  assert.ok(!/\d+\s*\/\s*16/.test(await top.locator('main').innerText()), 'no scores on the public page')
+  const boxes = await cards.evaluateAll((items) => items.map((item) => item.getBoundingClientRect()))
+  assert.ok(boxes[1].top >= boxes[0].bottom && boxes[2].top >= boxes[1].bottom, `${label}: the three cards are stacked`)
   const overflow = await top.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   assert.ok(overflow <= 0, `top 3 (${label}) scrolls sideways by ${overflow}px`)
   await top.screenshot({ path: path.join(outDir, `top3-${label}.png`), fullPage: true })
@@ -316,7 +329,29 @@ for (const [label, viewport] of [['phone', { width: 375, height: 740 }], ['deskt
   }
   await visitor.close()
 }
-step('the Top 3 page fits a phone and a desktop without sideways scrolling')
+step('the Top 3 page stacks its cards and fits a phone and a desktop without sideways scrolling')
+
+const student = await browser.newContext({ viewport: { width: 375, height: 740 } })
+const classPage = await student.newPage()
+classPage.on('pageerror', (err) => console.log(`  [class page error] ${err.message}`))
+await classPage.goto(`${base}/c/${classToken}`)
+await classPage.getByTestId('top3-link').click()
+await classPage.getByRole('heading', { name: 'Top 3 Podcasts' }).waitFor()
+await classPage.goBack()
+await classPage.getByRole('button', { name: 'Omar' }).click()
+await classPage.locator('#pin').fill(byName.Omar.pin)
+await classPage.getByRole('button', { name: 'Next' }).click()
+await classPage.getByRole('button', { name: 'My Recordings' }).click()
+const feedback = classPage.getByTestId('my-feedback')
+await feedback.waitFor()
+const feedbackText = await feedback.innerText()
+assert.match(feedbackText, /Content: Excellent[\s\S]*Organization: Great[\s\S]*Delivery: Great[\s\S]*Language: Good/)
+assert.ok(!/\d/.test(feedbackText), `the student's grade shows no numbers: ${feedbackText}`)
+await classPage.getByRole('button', { name: 'Listen' }).click()
+await classPage.getByTestId('highlight-status').waitFor()
+await classPage.screenshot({ path: path.join(outDir, 'student-feedback.png'), fullPage: true })
+await student.close()
+step('the class page links to the Top 3; a signed-in student sees their grade in words, with their highlights')
 
 await browser.close()
 
