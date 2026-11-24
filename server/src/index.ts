@@ -11,10 +11,12 @@ import { registerTrackRoutes } from "./routes/tracks.js";
 import { registerStudentRoutes } from "./routes/student.js";
 import { registerClassRoutes } from "./routes/classes.js";
 import { registerRosterRoutes } from "./routes/roster.js";
+import { registerGradeRoutes } from "./routes/grades.js";
 import { resumeInterruptedTracks } from "./jobs/pipeline.js";
 import { startSubmissionJobs } from "./jobs/submissions.js";
 import { registerGroupRoutes } from "./routes/group.js";
 import { startGroupJobs } from "./jobs/group-takes.js";
+import { backfillMixHashes } from "./lib/grades.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 4100);
@@ -50,9 +52,11 @@ registerTrackRoutes(app);
 registerStudentRoutes(app);
 registerClassRoutes(app);
 registerRosterRoutes(app);
+registerGradeRoutes(app);
 await registerGroupRoutes(app);
 startSubmissionJobs();
 startGroupJobs();
+backfillMixHashes();
 resumeInterruptedTracks();
 
 app.get("/api/health", async () => ({ ok: true, name: "firstmic", now: Date.now() }));

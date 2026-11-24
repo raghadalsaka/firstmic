@@ -44,7 +44,7 @@ export function saveCopy(
   studioId: string,
   student: StudentRow,
   topic: TopicRow,
-  copy: { submissionId: string; durationMs: number | null; withNames: string }
+  copy: { submissionId: string; durationMs: number | null; withNames: string; mixSha256: string }
 ): void {
   const { episodeId } = getOrCreateEpisode(studioId, student, topic);
   const participant = db.prepare("SELECT id FROM participants WHERE session_id = ?").get(episodeId) as { id: string };
@@ -63,7 +63,7 @@ export function saveCopy(
   ).run(trackId, recordingId, episodeId, participant.id, copy.durationMs, now);
   db.prepare(
     `INSERT INTO submissions (id, session_id, recording_id, track_id, status, version, duration_ms, with_names, created_at,
-       ready_at)
-     VALUES (?, ?, ?, ?, 'ready', ?, ?, ?, ?, ?)`
-  ).run(copy.submissionId, episodeId, recordingId, trackId, version, copy.durationMs, copy.withNames, now, now);
+       ready_at, mix_sha256)
+     VALUES (?, ?, ?, ?, 'ready', ?, ?, ?, ?, ?, ?)`
+  ).run(copy.submissionId, episodeId, recordingId, trackId, version, copy.durationMs, copy.withNames, now, now, copy.mixSha256);
 }

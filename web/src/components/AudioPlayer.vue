@@ -8,11 +8,13 @@ const props = withDefaults(
     /** Known length, shown before the file loads and for recordings whose file doesn't report one (MediaRecorder WebM). */
     durationMs?: number | null
     preload?: 'none' | 'metadata' | 'auto'
+    /** Stretches of the recording to mark under the seek bar, such as a teacher's highlights. */
+    markers?: { startMs: number; endMs: number }[]
   }>(),
-  { durationMs: null, preload: 'metadata' },
+  { durationMs: null, preload: 'metadata', markers: () => [] },
 )
 
-const emit = defineEmits<{ play: []; pause: []; ended: [] }>()
+const emit = defineEmits<{ play: []; pause: []; ended: []; timeupdate: [ms: number]; seek: [ms: number] }>()
 
 const audio = ref<HTMLAudioElement | null>(null)
 const playing = ref(false)
@@ -48,15 +50,34 @@ function toggle(): void {
   }
 }
 
-function seek(event: Event): void {
+function seekTo(ms: number): void {
   const element = audio.value
-  if (!element || totalMs.value === 0) {
+  if (!element) {
     return
   }
-  const ms = (Number((event.target as HTMLInputElement).value) / 100) * totalMs.value
   element.currentTime = ms / 1000
   currentMs.value = ms
 }
+
+function seek(event: Event): void {
+  if (totalMs.value === 0) {
+    return
+  }
+  const ms = (Number((event.target as HTMLInputElement).value) / 100) * totalMs.value
+  seekTo(ms)
+  emit('seek', ms)
+}
+
+function onTimeUpdate(): void {
+  currentMs.value = (audio.value?.currentTime ?? 0) * 1000
+  emit('timeupdate', currentMs.value)
+}
+
+defineExpose({
+  seekTo,
+  play: (): void => void audio.value?.play().catch(() => undefined),
+  pause: (): void => audio.value?.pause(),
+})
 
 function onPlay(): void {
   playing.value = true
@@ -92,19 +113,31 @@ function onEnded(): void {
         <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12.5-7.5a1 1 0 0 0 0-1.72L8.5 3.64A1 1 0 0 0 7 4.5Z" />
       </svg>
     </button>
-    <input
-      type="range"
-      class="player-range min-w-0 flex-1"
-      min="0"
-      max="100"
-      step="0.1"
-      :value="progress"
-      :style="{ '--progress': `${progress}%` }"
-      :disabled="totalMs === 0"
-      aria-label="Position"
-      :aria-valuetext="`${formatClock(currentMs)} of ${formatClock(totalMs)}`"
-      @input="seek"
-    />
+    <div class="relative min-w-0 flex-1">
+      <input
+        type="range"
+        class="player-range w-full"
+        min="0"
+        max="100"
+        step="0.1"
+        :value="progress"
+        :style="{ '--progress': `${progress}%` }"
+        :disabled="totalMs === 0"
+        aria-label="Position"
+        :aria-valuetext="`${formatClock(currentMs)} of ${formatClock(totalMs)}`"
+        @input="seek"
+      />
+      <span
+        v-for="(marker, i) in totalMs > 0 ? markers : []"
+        :key="i"
+        class="pointer-events-none absolute -bottom-1.5 h-1.5 rounded-full bg-rec"
+        :style="{
+          left: `${(marker.startMs / totalMs) * 100}%`,
+          width: `${Math.max(1, ((marker.endMs - marker.startMs) / totalMs) * 100)}%`,
+        }"
+        aria-hidden="true"
+      ></span>
+    </div>
     <span class="shrink-0 font-display text-base font-bold tabular-nums">
       {{ formatClock(currentMs) }}<span class="text-ink-soft"> / {{ formatClock(totalMs) }}</span>
     </span>
@@ -114,7 +147,7 @@ function onEnded(): void {
       :preload="preload"
       class="hidden"
       @durationchange="readDuration"
-      @timeupdate="currentMs = (audio?.currentTime ?? 0) * 1000"
+      @timeupdate="onTimeUpdate"
       @play="onPlay"
       @pause="onPause"
       @ended="onEnded"

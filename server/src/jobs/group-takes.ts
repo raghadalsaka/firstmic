@@ -14,6 +14,7 @@ import { GROUP_UPLOAD_TIMEOUT_MS, MAX_EPISODE_SECONDS } from "../lib/config.js";
 import { broadcastGroup, getTake, GROUP_SIZE, groupMembers, openTake, takeControllerId } from "../lib/groups.js";
 import { groupMixPath, submissionAudioPath, trackChunksDir, wavTrackPath } from "../lib/storage.js";
 import { saveCopy } from "../lib/episodes.js";
+import { fileSha256 } from "../lib/grades.js";
 import { enqueue, onTrackSettled } from "./pipeline.js";
 import { groupTakeExport, probe, type MixInput } from "./ffmpeg.js";
 import { removeRecordingFiles, removeTrackMedia } from "./submissions.js";
@@ -209,7 +210,12 @@ export function discardTake(take: GroupTakeRow): boolean {
   return endTake(take, "discarded", ["mixing", "listening", "failed"], "The take was thrown away");
 }
 
-type MixCopies = { studioId: string; topic: TopicRow; members: { student: StudentRow; submissionId: string }[] };
+type MixCopies = {
+  studioId: string;
+  topic: TopicRow;
+  mixSha256: string;
+  members: { student: StudentRow; submissionId: string }[];
+};
 type SendResult = { version: number; replaced: GroupTakeRow | null };
 
 const sendTransaction = db.transaction((take: GroupTakeRow, copies: MixCopies | null): SendResult | null => {
@@ -243,6 +249,7 @@ const sendTransaction = db.transaction((take: GroupTakeRow, copies: MixCopies | 
         submissionId: member.submissionId,
         durationMs: take.duration_ms,
         withNames,
+        mixSha256: copies.mixSha256,
       });
     }
   }
@@ -266,7 +273,7 @@ function copyMixForMembers(take: GroupTakeRow): MixCopies | null {
   for (const member of members) {
     fs.copyFileSync(groupMixPath(take.id), submissionAudioPath(member.submissionId));
   }
-  return { studioId: session.studio_id, topic, members };
+  return { studioId: session.studio_id, topic, mixSha256: fileSha256(groupMixPath(take.id)), members };
 }
 
 /**

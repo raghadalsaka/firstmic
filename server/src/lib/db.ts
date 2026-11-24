@@ -266,6 +266,33 @@ addColumns([
 ]);
 db.exec("CREATE INDEX IF NOT EXISTS idx_students_submitted ON students(submitted_submission_id)");
 
+// One grade per recording. recording_key is the submission id of a solo recording; partners' copies of a mix are
+// identical MP3s, so they share the file's hash as their key. A deleted submission leaves its grade behind, unseen.
+db.exec(`
+CREATE TABLE IF NOT EXISTS grades (
+  id TEXT PRIMARY KEY,
+  studio_id TEXT NOT NULL REFERENCES studios(id) ON DELETE CASCADE,
+  recording_key TEXT NOT NULL,
+  content INTEGER NOT NULL CHECK (content BETWEEN 1 AND 4),
+  organization INTEGER NOT NULL CHECK (organization BETWEEN 1 AND 4),
+  delivery INTEGER NOT NULL CHECK (delivery BETWEEN 1 AND 4),
+  language INTEGER NOT NULL CHECK (language BETWEEN 1 AND 4),
+  highlights_json TEXT NOT NULL DEFAULT '[]',
+  comment TEXT,
+  graded_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE (studio_id, recording_key)
+);
+`);
+
+// NULL keeps a class's Top 3 page empty until the teacher publishes it, so existing classes start unpublished.
+addColumns(["ALTER TABLE studios ADD COLUMN top3_published_at INTEGER"]);
+
+// A partner copy's MP3 hash, shared by every copy of one mix, so its grade covers both partners. NULL for a solo
+// recording; copies saved before this column are filled in at startup (backfillMixHashes).
+addColumns(["ALTER TABLE submissions ADD COLUMN mix_sha256 TEXT"]);
+
 // Podcast Guide: optional teacher text per topic. Existing topics keep NULL, which means no guidance.
 addColumns([
   "ALTER TABLE topics ADD COLUMN guide_prompt TEXT",
@@ -305,6 +332,23 @@ export type StudioRow = {
   class_token?: string | null;
   /** After this time (epoch ms) students can't change what they submitted; NULL for no deadline. */
   submission_deadline?: number | null;
+  /** When the teacher published the class's Top 3 page (epoch ms); NULL while it is hidden. */
+  top3_published_at?: number | null;
+};
+
+export type GradeRow = {
+  id: string;
+  studio_id: string;
+  recording_key: string;
+  content: number;
+  organization: number;
+  delivery: number;
+  language: number;
+  highlights_json: string;
+  comment: string | null;
+  graded_by: string | null;
+  created_at: number;
+  updated_at: number;
 };
 
 export type SessionRow = {
@@ -389,6 +433,7 @@ export type SubmissionRow = {
   ready_at: number | null;
   /** A copy of a group recording: the partners' names when it was saved. NULL for a recording made alone. */
   with_names?: string | null;
+  mix_sha256?: string | null;
 };
 
 export type ParticipantRow = {

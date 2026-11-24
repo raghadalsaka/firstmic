@@ -35,6 +35,7 @@ node solo-e2e.mjs       # 20 browser steps, screenshots in e2e/out/
 node webkit-layout.mjs  # Safari-engine layout of the home page and student screens
 node group-smoke.mjs    # 15 API steps for two-person podcasts, with two live-call connections
 node group-e2e.mjs      # 9 browser steps: two browsers, each with its own fake microphone
+node grades-e2e.mjs     # 13 steps: grades, Upload and Edit Scores pages, the public Top 3 page
 
 docker rm -f firstmic-e2e
 ```
@@ -47,6 +48,8 @@ The tests never talk to Google:
 - The browser test replaces Google's sign-in script with a stub that "picks" a test account.
 
 Use a fresh container for each run of `api-smoke.mjs`, because it signs in with a fixed email.
+`grades-e2e.mjs` deletes its class when it passes, because `group-smoke.mjs` fails on any group files left in the
+container.
 `group-smoke.mjs` and `group-e2e.mjs` check audio inside the container with `docker exec`, and `api-smoke.mjs` checks
 that deleted files are gone, so pass the container name (the third argument; the fourth for `api-smoke.mjs`) if it
 isn't `firstmic-e2e`.

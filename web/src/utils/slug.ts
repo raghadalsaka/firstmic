@@ -11,11 +11,19 @@ export function slugify(name: string): string {
     .replace(/-+$/, '')
 }
 
-export function classPath(classToken: string, className: string): string {
+function withSlug(base: string, className: string): string {
   const slug = slugify(className)
-  const base = `/c/${classToken}`
   if (!slug) {
     return base
   }
   return `${base}/${encodeURIComponent(slug)}`
+}
+
+export function classPath(classToken: string, className: string): string {
+  return withSlug(`/c/${classToken}`, className)
+}
+
+/** The class's public Top 3 page, beside the class page rather than under it so no class slug can clash with it. */
+export function topPath(classToken: string, className: string): string {
+  return withSlug(`/top/${classToken}`, className)
 }

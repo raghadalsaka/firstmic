@@ -346,6 +346,7 @@ function deleteSubmission(item: Submission): void {
             Submissions
             <span class="text-ink-soft">({{ detail.submissions.length }} of {{ detail.students.length }})</span>
           </h2>
+          <RouterLink :to="`/teacher/classes/${classId}/grades`" class="btn btn-small" data-testid="grades-link">Grades &amp; Top 3</RouterLink>
           <select v-model="topicFilter" class="field-input w-auto text-base" aria-label="Filter by topic">
             <option value="">All topics</option>
             <option v-for="topic in detail.topics" :key="topic.id" :value="topic.id">{{ topic.title }}</option>

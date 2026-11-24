@@ -17,6 +17,29 @@ const routes: RouteRecordRaw[] = [
     meta: { teacher: true },
   },
   {
+    path: '/teacher/classes/:classId/grades',
+    component: () => import('./teacher/TeacherGrades.vue'),
+    props: true,
+    meta: { teacher: true },
+  },
+  {
+    path: '/teacher/classes/:classId/grades/upload',
+    component: () => import('./teacher/GradesUpload.vue'),
+    props: true,
+    meta: { teacher: true },
+  },
+  {
+    path: '/teacher/classes/:classId/grades/:submissionId',
+    component: () => import('./teacher/GradeEdit.vue'),
+    props: true,
+    meta: { teacher: true },
+  },
+  {
+    path: '/top/:classToken/:slug?',
+    component: () => import('./student/TopRecordings.vue'),
+    props: (route) => ({ classToken: String(route.params.classToken) }),
+  },
+  {
     path: '/teacher/sign-in',
     name: 'teacher-sign-in',
     component: () => import('./components/LoginScreen.vue'),
